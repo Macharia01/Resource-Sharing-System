@@ -2,9 +2,9 @@ import communityImg from './Assets/Images/community.jpg';
 
 function App() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-[#2e1f25] to-[#e192a3] text-white font-sans">
+    <div className="min-h-screen bg-gradient-to-b from-black via-[#73aeb7] to-[#652a37] text-white font-sans">
       {/* Navbar */}
-      <header className="flex justify-between items-center p-6 bg-white shadow">
+    <header className="flex justify-between items-center p-6 bg-white shadow">
         <h1 className="text-xl font-bold text-pink-600">ShareNet</h1>
         <nav className="space-x-6">
           <a href="#" className="text-gray-600 hover:text-pink-500">Browse</a>
