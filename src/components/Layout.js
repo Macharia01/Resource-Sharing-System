@@ -10,6 +10,7 @@ function Layout({ children }) {
         <nav className="space-x-6">
           <Link to="/" className="hover:text-pink-500">Home</Link>
           <Link to="/create-listing" className="hover:text-pink-500">Create Listing</Link>
+          <Link to="/ItemDetailPage" className="hover:text-pink-500">ItemDetailPage</Link>
           <Link to="#" className="hover:text-pink-500">About</Link>
           <Link to="#" className="hover:text-pink-500">Login</Link>
           <Link to="#" className="px-4 py-2 bg-pink-600 text-white rounded hover:bg-pink-700">Sign Up</Link>
