@@ -230,7 +230,7 @@ app.put('/api/user/profile', protect, async (req, res) => {
 // --- PUBLIC RESOURCE ROUTES ---
 
 // @route   GET /api/resources
-// @desc    Get all available resources, with optional search functionality
+// @desc    Get all resources, with optional search functionality (includes non-available)
 // @access  Public
 app.get('/api/resources', async (req, res) => {
     const { search } = req.query;
@@ -239,12 +239,11 @@ app.get('/api/resources', async (req, res) => {
         SELECT r.resource_id, r.name, r.description, r.category, r.location, r.availability_status, r.posted_at, u.username as owner_username
         FROM Resources r
         JOIN Users u ON r.owner_id = u.user_id
-        WHERE r.availability_status = 'Available'
-    `;
+    `; // Removed WHERE r.availability_status = 'Available'
     const queryParams = [];
 
     if (search) {
-        query += ` AND (r.name ILIKE $1 OR r.description ILIKE $1 OR r.category ILIKE $1)`;
+        query += ` WHERE (r.name ILIKE $1 OR r.description ILIKE $1 OR r.category ILIKE $1)`;
         queryParams.push(`%${search}%`);
     }
 
@@ -324,7 +323,7 @@ app.post('/api/resources', protect, async (req, res) => {
 app.post('/api/requests', protect, async (req, res) => {
     const { resourceId, pickupDate, returnDate, pickupMethod, messageToOwner, borrowLocation } = req.body;
     const requesterId = req.user.userId;
-    const requesterUsername = req.user.username; // Get requester's username from token
+    const requesterUsername = req.user.username;
 
     if (!resourceId || !pickupDate || !returnDate || !pickupMethod || !borrowLocation) {
         return res.status(400).json({ msg: 'Please provide all required fields for the borrow request.' });
@@ -332,11 +331,11 @@ app.post('/api/requests', protect, async (req, res) => {
 
     let client;
     try {
-        client = await pool.connect(); // Get a client from the pool
-        await client.query('BEGIN'); // Start transaction
+        client = await pool.connect();
+        await client.query('BEGIN');
 
         const resourceResult = await client.query(
-            'SELECT owner_id, name FROM Resources WHERE resource_id = $1',
+            'SELECT owner_id, name, availability_status FROM Resources WHERE resource_id = $1',
             [resourceId]
         );
 
@@ -345,12 +344,17 @@ app.post('/api/requests', protect, async (req, res) => {
             return res.status(404).json({ msg: 'Resource not found.' });
         }
 
-        const ownerId = resourceResult.rows[0].owner_id;
-        const resourceName = resourceResult.rows[0].name;
+        const { owner_id, name: resourceName, availability_status: currentResourceStatus } = resourceResult.rows[0];
 
-        if (requesterId === ownerId) {
+        if (requesterId === owner_id) {
             await client.query('ROLLBACK');
             return res.status(400).json({ msg: 'You cannot request your own item.' });
+        }
+
+        // NEW LOGIC: Prevent requests if item is not 'Available'
+        if (currentResourceStatus !== 'Available') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ msg: `This item is currently ${currentResourceStatus.toLowerCase()} and cannot be requested.` });
         }
 
         const parsedPickupDate = new Date(pickupDate);
@@ -358,24 +362,12 @@ app.post('/api/requests', protect, async (req, res) => {
 
         if (isNaN(parsedPickupDate.getTime()) || isNaN(parsedReturnDate.getTime())) {
             await client.query('ROLLBACK');
-            return res.status(400).json({ msg: 'Invalid date format. Please use YYYY-MM-DD.' });
+            return res.status(400).json({ msg: 'Invalid date format. Please use ISO-MM-DD.' });
         }
 
         if (parsedReturnDate < parsedPickupDate) {
             await client.query('ROLLBACK');
             return res.status(400).json({ msg: 'Return date cannot be before pickup date.' });
-        }
-
-        // Check if there's an existing 'Pending' or 'Accepted' request for this resource by this requester
-        const existingRequest = await client.query(
-            `SELECT request_id FROM Requests
-             WHERE resource_id = $1 AND requester_id = $2 AND status IN ('Pending', 'Accepted')`,
-            [resourceId, requesterId]
-        );
-
-        if (existingRequest.rows.length > 0) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({ msg: 'You already have a pending or accepted request for this item.' });
         }
 
         const newRequest = await client.query(
@@ -384,33 +376,41 @@ app.post('/api/requests', protect, async (req, res) => {
                 pickup_method, message_to_owner, borrow_location, status
                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pending')
                RETURNING *`,
-            [resourceId, requesterId, ownerId, pickupDate, returnDate, pickupMethod, messageToOwner, borrowLocation]
+            [resourceId, requesterId, owner_id, pickupDate, returnDate, pickupMethod, messageToOwner, borrowLocation]
+        );
+
+        // Update resource status to 'Reserved' upon successful request
+        await client.query(
+            `UPDATE Resources SET availability_status = 'Reserved', updated_at = CURRENT_TIMESTAMP
+             WHERE resource_id = $1`,
+            [resourceId]
         );
 
         // Notify the owner about the new request
         await client.query(
             `INSERT INTO Notifications (user_id, related_request_id, message, type)
              VALUES ($1, $2, $3, $4)`,
-            [ownerId, newRequest.rows[0].request_id, `${requesterUsername} has requested to borrow your item: "${resourceName}"`, 'new_request']
+            [owner_id, newRequest.rows[0].request_id, `${requesterUsername} has requested to borrow your item: "${resourceName}"`, 'new_request']
         );
 
-        await client.query('COMMIT'); // Commit transaction
+        await client.query('COMMIT');
         res.status(201).json({
-            msg: 'Borrow request submitted successfully!',
+            msg: 'Borrow request submitted successfully! Item status updated to Reserved.',
             request: newRequest.rows[0]
         });
 
     } catch (err) {
-        if (client) await client.query('ROLLBACK'); // Rollback transaction on error
+        if (client) await client.query('ROLLBACK');
         console.error('Detailed Submit Request Error:', err.message);
         if (err.message.includes('invalid input syntax for type uuid')) {
             return res.status(400).json({ msg: 'Invalid ID format for resource or user. Please ensure IDs are valid UUIDs.' });
         }
         res.status(500).json({ msg: 'Server Error submitting borrow request', error: err.message });
     } finally {
-        if (client) client.release(); // Release client back to pool
+        if (client) client.release();
     }
 });
+
 
 // @route   GET /api/requests/received
 // @desc    Get all borrow requests received by the authenticated user (for their items)
@@ -552,28 +552,30 @@ app.put('/api/requests/:id/status', protect, async (req, res) => {
                  return res.status(400).json({ msg: 'Only pending requests can be accepted.' });
             }
             updatePermitted = true;
-            newResourceStatus = 'Reserved'; // Item is now reserved
+            newResourceStatus = 'Reserved'; // Item remains Reserved
             notificationMessage = `${username} has accepted your request for "${resource_name}"!`;
             notificationType = 'request_accepted';
             recipientId = requester_id;
 
             // Immediately reject all other pending requests for this resource
+            const otherPendingRequests = await client.query(
+                `SELECT requester_id, request_id FROM Requests
+                 WHERE resource_id = $1 AND request_id != $2 AND status = 'Pending'`,
+                [resource_id, requestId]
+            );
+
             await client.query(
                 `UPDATE Requests SET status = 'Rejected', updated_at = CURRENT_TIMESTAMP
                  WHERE resource_id = $1 AND request_id != $2 AND status = 'Pending'`,
                 [resource_id, requestId]
             );
+            
             // Notify other requesters about rejection
-            const otherPendingRequests = await client.query(
-                `SELECT requester_id, request_id FROM Requests
-                 WHERE resource_id = $1 AND request_id != $2 AND status = 'Rejected'`,
-                 [resource_id, requestId]
-            );
             for (const req of otherPendingRequests.rows) {
                 await client.query(
                     `INSERT INTO Notifications (user_id, related_request_id, message, type)
                      VALUES ($1, $2, $3, $4)`,
-                    [req.requester_id, req.request_id, `Your request for "${resource_name}" has been rejected as it was accepted by another borrower.`, 'request_rejected']
+                    [req.requester_id, req.request_id, `Your request for "${resource_name}" has been rejected because another request for it was accepted.`, 'request_rejected']
                 );
             }
 
@@ -587,16 +589,16 @@ app.put('/api/requests/:id/status', protect, async (req, res) => {
                  return res.status(400).json({ msg: 'Only pending requests can be rejected.' });
             }
             updatePermitted = true;
-            // No change to resource status if rejecting a pending request (remains 'Available')
-            newResourceStatus = 'Available'; // Reverted if it was temporarily held
+            newResourceStatus = 'Available'; // Item becomes available again
             notificationMessage = `${username} has rejected your request for "${resource_name}".`;
             notificationType = 'request_rejected';
             recipientId = requester_id;
 
         } else if (status === 'Cancelled') {
+            // Requester, owner, or admin can cancel
             if (userId !== requester_id && userId !== owner_id && userRole !== 'admin') {
                 await client.query('ROLLBACK');
-                return res.status(403).json({ msg: 'Forbidden: Only the requester, owner, or an admin can cancel this request.' });
+                return res.status(403).json({ msg: 'Forbidden: You do not have permission to cancel this request.' });
             }
             if (current_status === 'Completed' || current_status === 'Rejected') {
                  await client.query('ROLLBACK');
@@ -604,7 +606,7 @@ app.put('/api/requests/:id/status', protect, async (req, res) => {
             }
             updatePermitted = true;
             newResourceStatus = 'Available'; // Item becomes available again
-            if (userId === requester_id) {
+            if (userId === requester_id) { // Requester cancelled
                 notificationMessage = `${username} cancelled their request for your item: "${resource_name}".`;
                 notificationType = 'request_cancelled';
                 recipientId = owner_id;
@@ -619,7 +621,7 @@ app.put('/api/requests/:id/status', protect, async (req, res) => {
                 await client.query('ROLLBACK');
                 return res.status(403).json({ msg: 'Forbidden: Only the owner or an admin can mark this request as completed.' });
             }
-            if (current_status !== 'Accepted') {
+            if (current_status !== 'Accepted') { // Only accepted requests can be completed
                  await client.query('ROLLBACK');
                  return res.status(400).json({ msg: 'Only accepted requests can be marked as completed.' });
             }
@@ -638,14 +640,14 @@ app.put('/api/requests/:id/status', protect, async (req, res) => {
         // Update request status
         const updatedRequest = await client.query(
             `UPDATE Requests SET status = $1, updated_at = CURRENT_TIMESTAMP
-             WHERE request_id = $2 AND (owner_id = $3 OR requester_id = $3 OR $4 = 'admin')
-             RETURNING *`,
-            [status, requestId, userId, userRole] // userId and userRole used for authorization check in query
+             WHERE request_id = $2
+             RETURNING *`, // No need for owner_id/requester_id in WHERE clause, already authorized
+            [status, requestId]
         );
 
         if (updatedRequest.rows.length === 0) {
             await client.query('ROLLBACK');
-            return res.status(404).json({ msg: 'Request not found or you are not authorized to update it.' });
+            return res.status(404).json({ msg: 'Request not found.' }); // Should not happen if authorization passed
         }
 
         // Update resource availability status if applicable
@@ -672,6 +674,9 @@ app.put('/api/requests/:id/status', protect, async (req, res) => {
     } catch (err) {
         if (client) await client.query('ROLLBACK');
         console.error('Update Request Status Error:', err.message);
+        if (err.message.includes('invalid input syntax for type uuid')) {
+            return res.status(400).json({ msg: 'Invalid ID format for resource or user. Please ensure IDs are valid UUIDs.' });
+        }
         res.status(500).json({ msg: 'Server Error updating request status', error: err.message });
     } finally {
         if (client) client.release();
