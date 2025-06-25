@@ -32,10 +32,11 @@ pool.connect((err, client, release) => {
     client.release();
 });
 
-// --- API Routes (Existing: Signup, Login, Profile, Admin) ---
-// (No changes to existing routes unless specifically noted in this update)
+// --- API Routes ---
 
 // @route   POST /api/signup
+// @desc    Register a new user
+// @access  Public
 app.post('/api/signup', async (req, res) => {
     const { firstName, lastName, email, phoneNumber, password, username, address } = req.body;
 
@@ -65,7 +66,7 @@ app.post('/api/signup', async (req, res) => {
         );
 
         const token = jwt.sign(
-            { userId: newUser.rows[0].user_id, role: newUser.rows[0].role },
+            { userId: newUser.rows[0].user_id, role: newUser.rows[0].role, username: newUser.rows[0].username },
             process.env.JWT_SECRET,
             { expiresIn: '1h' }
         );
@@ -92,6 +93,8 @@ app.post('/api/signup', async (req, res) => {
 });
 
 // @route   POST /api/login
+// @desc    Authenticate user and get token
+// @access  Public
 app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
 
@@ -116,7 +119,7 @@ app.post('/api/login', async (req, res) => {
         }
 
         const token = jwt.sign(
-            { userId: storedUser.user_id, role: storedUser.role },
+            { userId: storedUser.user_id, role: storedUser.role, username: storedUser.username },
             process.env.JWT_SECRET,
             { expiresIn: '1h' }
         );
@@ -143,6 +146,8 @@ app.post('/api/login', async (req, res) => {
 });
 
 // @route   GET /api/user/profile
+// @desc    Get authenticated user's profile
+// @access  Private
 app.get('/api/user/profile', protect, async (req, res) => {
     try {
         const user = await pool.query(
@@ -163,6 +168,8 @@ app.get('/api/user/profile', protect, async (req, res) => {
 });
 
 // @route   PUT /api/user/profile
+// @desc    Update authenticated user's profile
+// @access  Private
 app.put('/api/user/profile', protect, async (req, res) => {
     const { firstName, lastName, email, phoneNumber, username, address } = req.body;
     const userId = req.user.userId;
@@ -223,15 +230,28 @@ app.put('/api/user/profile', protect, async (req, res) => {
 // --- PUBLIC RESOURCE ROUTES ---
 
 // @route   GET /api/resources
+// @desc    Get all available resources, with optional search functionality
+// @access  Public
 app.get('/api/resources', async (req, res) => {
+    const { search } = req.query;
+
+    let query = `
+        SELECT r.resource_id, r.name, r.description, r.category, r.location, r.availability_status, r.posted_at, u.username as owner_username
+        FROM Resources r
+        JOIN Users u ON r.owner_id = u.user_id
+        WHERE r.availability_status = 'Available'
+    `;
+    const queryParams = [];
+
+    if (search) {
+        query += ` AND (r.name ILIKE $1 OR r.description ILIKE $1 OR r.category ILIKE $1)`;
+        queryParams.push(`%${search}%`);
+    }
+
+    query += ` ORDER BY r.posted_at DESC`;
+
     try {
-        const resources = await pool.query(
-            `SELECT r.resource_id, r.name, r.description, r.category, r.location, r.availability_status, r.posted_at, u.username as owner_username
-             FROM Resources r
-             JOIN Users u ON r.owner_id = u.user_id
-             WHERE r.availability_status = 'Available' OR r.availability_status = 'Reserved'
-             ORDER BY r.posted_at DESC`
-        );
+        const resources = await pool.query(query, queryParams);
         res.json(resources.rows);
     }
     catch (err) {
@@ -302,85 +322,407 @@ app.post('/api/resources', protect, async (req, res) => {
 // @desc    Submit a new borrow request
 // @access  Private (requires authentication)
 app.post('/api/requests', protect, async (req, res) => {
-    console.log('--- Received POST /api/requests request ---');
-    console.log('Request Body:', req.body);
-    console.log('Authenticated User ID (req.user.userId):', req.user.userId);
-
     const { resourceId, pickupDate, returnDate, pickupMethod, messageToOwner, borrowLocation } = req.body;
     const requesterId = req.user.userId;
+    const requesterUsername = req.user.username; // Get requester's username from token
 
-    // Validate incoming data
     if (!resourceId || !pickupDate || !returnDate || !pickupMethod || !borrowLocation) {
-        console.error('Validation Error: Missing required fields for borrow request.');
         return res.status(400).json({ msg: 'Please provide all required fields for the borrow request.' });
     }
 
+    let client;
     try {
-        // First, get the owner_id of the requested resource
-        console.log(`Attempting to find owner_id for resource_id: ${resourceId}`);
-        const resourceResult = await pool.query(
-            'SELECT owner_id FROM Resources WHERE resource_id = $1',
+        client = await pool.connect(); // Get a client from the pool
+        await client.query('BEGIN'); // Start transaction
+
+        const resourceResult = await client.query(
+            'SELECT owner_id, name FROM Resources WHERE resource_id = $1',
             [resourceId]
         );
 
         if (resourceResult.rows.length === 0) {
-            console.error(`Error: Resource with ID ${resourceId} not found.`);
+            await client.query('ROLLBACK');
             return res.status(404).json({ msg: 'Resource not found.' });
         }
 
         const ownerId = resourceResult.rows[0].owner_id;
-        console.log(`Found owner_id: ${ownerId} for resource_id: ${resourceId}`);
+        const resourceName = resourceResult.rows[0].name;
 
-        // Prevent a user from requesting their own item
         if (requesterId === ownerId) {
-            console.error('Error: User attempting to request their own item.');
+            await client.query('ROLLBACK');
             return res.status(400).json({ msg: 'You cannot request your own item.' });
         }
 
-        // Validate date formats for PostgreSQL's DATE type
-        // Ensure pickupDate and returnDate are valid date strings (YYYY-MM-DD)
         const parsedPickupDate = new Date(pickupDate);
         const parsedReturnDate = new Date(returnDate);
 
         if (isNaN(parsedPickupDate.getTime()) || isNaN(parsedReturnDate.getTime())) {
-            console.error('Validation Error: Invalid date format for pickup or return date.');
+            await client.query('ROLLBACK');
             return res.status(400).json({ msg: 'Invalid date format. Please use YYYY-MM-DD.' });
         }
 
-        // Simple check to ensure returnDate is after pickupDate (optional but good practice)
         if (parsedReturnDate < parsedPickupDate) {
-            console.error('Validation Error: Return date cannot be before pickup date.');
+            await client.query('ROLLBACK');
             return res.status(400).json({ msg: 'Return date cannot be before pickup date.' });
         }
 
+        // Check if there's an existing 'Pending' or 'Accepted' request for this resource by this requester
+        const existingRequest = await client.query(
+            `SELECT request_id FROM Requests
+             WHERE resource_id = $1 AND requester_id = $2 AND status IN ('Pending', 'Accepted')`,
+            [resourceId, requesterId]
+        );
 
-        // Insert the new request into the Requests table
-        console.log('Attempting to insert request into Requests table with values:', {
-            resourceId, requesterId, ownerId, pickupDate, returnDate, pickupMethod, messageToOwner, borrowLocation
-        });
+        if (existingRequest.rows.length > 0) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ msg: 'You already have a pending or accepted request for this item.' });
+        }
 
-        const newRequest = await pool.query(
+        const newRequest = await client.query(
             `INSERT INTO Requests (
                 resource_id, requester_id, owner_id, pickup_date, return_date,
                 pickup_method, message_to_owner, borrow_location, status
-             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pending')
-             RETURNING *`,
+               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pending')
+               RETURNING *`,
             [resourceId, requesterId, ownerId, pickupDate, returnDate, pickupMethod, messageToOwner, borrowLocation]
         );
 
-        console.log('Successfully inserted new request:', newRequest.rows[0]);
+        // Notify the owner about the new request
+        await client.query(
+            `INSERT INTO Notifications (user_id, related_request_id, message, type)
+             VALUES ($1, $2, $3, $4)`,
+            [ownerId, newRequest.rows[0].request_id, `${requesterUsername} has requested to borrow your item: "${resourceName}"`, 'new_request']
+        );
+
+        await client.query('COMMIT'); // Commit transaction
         res.status(201).json({
             msg: 'Borrow request submitted successfully!',
             request: newRequest.rows[0]
         });
 
     } catch (err) {
+        if (client) await client.query('ROLLBACK'); // Rollback transaction on error
         console.error('Detailed Submit Request Error:', err.message);
-        // If it's a UUID format error, it might originate from PostgreSQL
         if (err.message.includes('invalid input syntax for type uuid')) {
             return res.status(400).json({ msg: 'Invalid ID format for resource or user. Please ensure IDs are valid UUIDs.' });
         }
         res.status(500).json({ msg: 'Server Error submitting borrow request', error: err.message });
+    } finally {
+        if (client) client.release(); // Release client back to pool
+    }
+});
+
+// @route   GET /api/requests/received
+// @desc    Get all borrow requests received by the authenticated user (for their items)
+// @access  Private (owner of items)
+app.get('/api/requests/received', protect, async (req, res) => {
+    const ownerId = req.user.userId;
+    try {
+        const receivedRequests = await pool.query(
+            `SELECT
+                r.request_id,
+                r.resource_id,
+                res.name as resource_name,
+                res.description as resource_description,
+                res.category as resource_category,
+                res.location as resource_location,
+                res.availability_status as current_resource_status,
+                r.requester_id,
+                u.username as requester_username,
+                u.email as requester_email,
+                u.phone_number as requester_phone_number,
+                u.address as requester_address,
+                r.pickup_date,
+                r.return_date,
+                r.pickup_method,
+                r.message_to_owner,
+                r.borrow_location,
+                r.status,
+                r.requested_at
+             FROM Requests r
+             JOIN Resources res ON r.resource_id = res.resource_id
+             JOIN Users u ON r.requester_id = u.user_id
+             WHERE r.owner_id = $1
+             ORDER BY r.requested_at DESC`,
+            [ownerId]
+        );
+        res.json(receivedRequests.rows);
+    } catch (err) {
+        console.error('Get Received Requests Error:', err.message);
+        res.status(500).json({ msg: 'Server Error fetching received requests', error: err.message });
+    }
+});
+
+// @route   GET /api/requests/sent
+// @desc    Get all borrow requests sent by the authenticated user
+// @access  Private (requester)
+app.get('/api/requests/sent', protect, async (req, res) => {
+    const requesterId = req.user.userId;
+    try {
+        const sentRequests = await pool.query(
+            `SELECT
+                r.request_id,
+                r.resource_id,
+                res.name as resource_name,
+                res.description as resource_description,
+                res.category as resource_category,
+                res.location as resource_location,
+                res.availability_status as current_resource_status,
+                r.owner_id,
+                u.username as owner_username,
+                u.email as owner_email,
+                u.phone_number as owner_phone_number,
+                u.address as owner_address,
+                r.pickup_date,
+                r.return_date,
+                r.pickup_method,
+                r.message_to_owner,
+                r.borrow_location,
+                r.status,
+                r.requested_at
+             FROM Requests r
+             JOIN Resources res ON r.resource_id = res.resource_id
+             JOIN Users u ON r.owner_id = u.user_id
+             WHERE r.requester_id = $1
+             ORDER BY r.requested_at DESC`,
+            [requesterId]
+        );
+        res.json(sentRequests.rows);
+    } catch (err) {
+        console.error('Get Sent Requests Error:', err.message);
+        res.status(500).json({ msg: 'Server Error fetching sent requests', error: err.message });
+    }
+});
+
+// @route   PUT /api/requests/:id/status
+// @desc    Update the status of a borrow request (Accept, Reject, Cancel, Complete)
+// @access  Private (owner for Accept/Reject/Complete, requester for Cancel)
+app.put('/api/requests/:id/status', protect, async (req, res) => {
+    const requestId = req.params.id;
+    const { status } = req.body; // New status: 'Accepted', 'Rejected', 'Cancelled', 'Completed'
+    const userId = req.user.userId;
+    const userRole = req.user.role;
+    const username = req.user.username;
+
+    if (!status || !['Accepted', 'Rejected', 'Cancelled', 'Completed'].includes(status)) {
+        return res.status(400).json({ msg: 'Invalid status provided.' });
+    }
+
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN'); // Start transaction
+
+        // Get request details to verify ownership/requester status
+        const requestDetails = await client.query(
+            `SELECT r.owner_id, r.requester_id, r.resource_id, r.status as current_status, res.name as resource_name
+             FROM Requests r
+             JOIN Resources res ON r.resource_id = res.resource_id
+             WHERE r.request_id = $1`,
+            [requestId]
+        );
+
+        if (requestDetails.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ msg: 'Borrow request not found.' });
+        }
+
+        const { owner_id, requester_id, resource_id, current_status, resource_name } = requestDetails.rows[0];
+
+        // Authorization logic based on desired status change
+        let notificationMessage = '';
+        let notificationType = '';
+        let recipientId;
+        let updatePermitted = false;
+        let newResourceStatus = null; // To update resource's availability_status
+
+        // Prevent status changes if request is already completed/rejected/cancelled
+        if (current_status === 'Completed' || current_status === 'Rejected' || current_status === 'Cancelled') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ msg: `Cannot change status of a request that is already ${current_status}.` });
+        }
+
+        if (status === 'Accepted') {
+            if (userId !== owner_id && userRole !== 'admin') {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ msg: 'Forbidden: Only the owner or an admin can accept this request.' });
+            }
+            if (current_status !== 'Pending') {
+                 await client.query('ROLLBACK');
+                 return res.status(400).json({ msg: 'Only pending requests can be accepted.' });
+            }
+            updatePermitted = true;
+            newResourceStatus = 'Reserved'; // Item is now reserved
+            notificationMessage = `${username} has accepted your request for "${resource_name}"!`;
+            notificationType = 'request_accepted';
+            recipientId = requester_id;
+
+            // Immediately reject all other pending requests for this resource
+            await client.query(
+                `UPDATE Requests SET status = 'Rejected', updated_at = CURRENT_TIMESTAMP
+                 WHERE resource_id = $1 AND request_id != $2 AND status = 'Pending'`,
+                [resource_id, requestId]
+            );
+            // Notify other requesters about rejection
+            const otherPendingRequests = await client.query(
+                `SELECT requester_id, request_id FROM Requests
+                 WHERE resource_id = $1 AND request_id != $2 AND status = 'Rejected'`,
+                 [resource_id, requestId]
+            );
+            for (const req of otherPendingRequests.rows) {
+                await client.query(
+                    `INSERT INTO Notifications (user_id, related_request_id, message, type)
+                     VALUES ($1, $2, $3, $4)`,
+                    [req.requester_id, req.request_id, `Your request for "${resource_name}" has been rejected as it was accepted by another borrower.`, 'request_rejected']
+                );
+            }
+
+        } else if (status === 'Rejected') {
+            if (userId !== owner_id && userRole !== 'admin') {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ msg: 'Forbidden: Only the owner or an admin can reject this request.' });
+            }
+             if (current_status !== 'Pending') {
+                 await client.query('ROLLBACK');
+                 return res.status(400).json({ msg: 'Only pending requests can be rejected.' });
+            }
+            updatePermitted = true;
+            // No change to resource status if rejecting a pending request (remains 'Available')
+            newResourceStatus = 'Available'; // Reverted if it was temporarily held
+            notificationMessage = `${username} has rejected your request for "${resource_name}".`;
+            notificationType = 'request_rejected';
+            recipientId = requester_id;
+
+        } else if (status === 'Cancelled') {
+            if (userId !== requester_id && userId !== owner_id && userRole !== 'admin') {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ msg: 'Forbidden: Only the requester, owner, or an admin can cancel this request.' });
+            }
+            if (current_status === 'Completed' || current_status === 'Rejected') {
+                 await client.query('ROLLBACK');
+                 return res.status(400).json({ msg: `Cannot cancel a request that is already ${current_status}.` });
+            }
+            updatePermitted = true;
+            newResourceStatus = 'Available'; // Item becomes available again
+            if (userId === requester_id) {
+                notificationMessage = `${username} cancelled their request for your item: "${resource_name}".`;
+                notificationType = 'request_cancelled';
+                recipientId = owner_id;
+            } else { // Owner or Admin cancelled
+                notificationMessage = `${username} cancelled your request for "${resource_name}".`;
+                notificationType = 'request_cancelled';
+                recipientId = requester_id;
+            }
+
+        } else if (status === 'Completed') {
+            if (userId !== owner_id && userRole !== 'admin') {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ msg: 'Forbidden: Only the owner or an admin can mark this request as completed.' });
+            }
+            if (current_status !== 'Accepted') {
+                 await client.query('ROLLBACK');
+                 return res.status(400).json({ msg: 'Only accepted requests can be marked as completed.' });
+            }
+            updatePermitted = true;
+            newResourceStatus = 'Available'; // Item is available again after completion
+            notificationMessage = `${username} has marked your borrow of "${resource_name}" as completed.`;
+            notificationType = 'borrow_completed';
+            recipientId = requester_id;
+        }
+
+        if (!updatePermitted) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ msg: 'Invalid status transition or insufficient permissions.' });
+        }
+
+        // Update request status
+        const updatedRequest = await client.query(
+            `UPDATE Requests SET status = $1, updated_at = CURRENT_TIMESTAMP
+             WHERE request_id = $2 AND (owner_id = $3 OR requester_id = $3 OR $4 = 'admin')
+             RETURNING *`,
+            [status, requestId, userId, userRole] // userId and userRole used for authorization check in query
+        );
+
+        if (updatedRequest.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ msg: 'Request not found or you are not authorized to update it.' });
+        }
+
+        // Update resource availability status if applicable
+        if (newResourceStatus) {
+            await client.query(
+                `UPDATE Resources SET availability_status = $1, updated_at = CURRENT_TIMESTAMP
+                 WHERE resource_id = $2`,
+                [newResourceStatus, resource_id]
+            );
+        }
+
+        // Insert notification
+        if (notificationMessage && recipientId) {
+            await client.query(
+                `INSERT INTO Notifications (user_id, related_request_id, message, type)
+                 VALUES ($1, $2, $3, $4)`,
+                [recipientId, requestId, notificationMessage, notificationType]
+            );
+        }
+
+        await client.query('COMMIT'); // Commit transaction
+        res.json({ msg: `Request status updated to ${status} successfully!`, request: updatedRequest.rows[0] });
+
+    } catch (err) {
+        if (client) await client.query('ROLLBACK');
+        console.error('Update Request Status Error:', err.message);
+        res.status(500).json({ msg: 'Server Error updating request status', error: err.message });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+
+// --- Notification Routes ---
+
+// @route   GET /api/notifications
+// @desc    Get all notifications for the authenticated user
+// @access  Private
+app.get('/api/notifications', protect, async (req, res) => {
+    const userId = req.user.userId;
+    try {
+        const notifications = await pool.query(
+            `SELECT notification_id, user_id, related_request_id, message, type, is_read, created_at
+             FROM Notifications
+             WHERE user_id = $1
+             ORDER BY created_at DESC`,
+            [userId]
+        );
+        res.json(notifications.rows);
+    } catch (err) {
+        console.error('Get Notifications Error:', err.message);
+        res.status(500).json({ msg: 'Server Error fetching notifications', error: err.message });
+    }
+});
+
+// @route   PUT /api/notifications/:id/read
+// @desc    Mark a specific notification as read
+// @access  Private (owner of notification)
+app.put('/api/notifications/:id/read', protect, async (req, res) => {
+    const notificationId = req.params.id;
+    const userId = req.user.userId;
+
+    try {
+        const result = await pool.query(
+            `UPDATE Notifications SET is_read = TRUE
+             WHERE notification_id = $1 AND user_id = $2
+             RETURNING notification_id, is_read`,
+            [notificationId, userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ msg: 'Notification not found or you are not authorized to mark it as read.' });
+        }
+        res.json({ msg: 'Notification marked as read.', notification: result.rows[0] });
+    } catch (err) {
+        console.error('Mark Notification Read Error:', err.message);
+        res.status(500).json({ msg: 'Server Error marking notification as read', error: err.message });
     }
 });
 
@@ -476,7 +818,6 @@ app.delete('/api/user/resources/:id', protect, async (req, res) => {
 });
 
 // --- ADMIN ROUTES (Existing) ---
-// (No changes to these sections)
 
 // @route   GET /api/admin/dashboard-stats
 app.get('/api/admin/dashboard-stats', protect, authorizeAdmin, async (req, res) => {
@@ -484,7 +825,7 @@ app.get('/api/admin/dashboard-stats', protect, authorizeAdmin, async (req, res) 
         const totalUsers = await pool.query('SELECT COUNT(*) FROM Users');
         const totalResources = await pool.query('SELECT COUNT(*) FROM Resources');
         const pendingRequests = await pool.query('SELECT COUNT(*) FROM Requests WHERE status = $1', ['Pending']);
-        const reportsCount = await pool.query('SELECT COUNT(*) FROM Feedback WHERE rating < 3');
+        const reportsCount = await pool.query('SELECT COUNT(*) FROM Feedback WHERE rating < 3'); // Assuming Feedback table exists
 
         res.json({
             totalUsers: parseInt(totalUsers.rows[0].count),

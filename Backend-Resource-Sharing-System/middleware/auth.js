@@ -1,27 +1,27 @@
 const jwt = require('jsonwebtoken');
 
-// Middleware function to protect routes
 function protect(req, res, next) {
     // Get token from header
-    const token = req.header('x-auth-token'); // Common header name for JWT
+    const token = req.header('x-auth-token');
 
     // Check if no token
     if (!token) {
         return res.status(401).json({ msg: 'No token, authorization denied' });
     }
 
-    // Verify token
     try {
-        // Verify token with your JWT_SECRET
+        // Verify token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-        // Attach user from token to the request object
-        // The payload (decoded) from the token should contain userId and role
-        req.user = decoded; // Now, req.user will have { userId, role }
+        
+        // Attach user from token payload to the request object
+        req.user = decoded; 
         next(); // Proceed to the next middleware/route handler
-
     } catch (err) {
-        // Token is not valid
+        // --- CHANGE: Handle token expiration or invalid token explicitly ---
+        console.error('Token verification failed:', err.message);
+        if (err.name === 'TokenExpiredError') {
+            return res.status(401).json({ msg: 'Token expired' });
+        }
         res.status(401).json({ msg: 'Token is not valid' });
     }
 }

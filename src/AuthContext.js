@@ -1,70 +1,98 @@
-// src/AuthContext.js
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { jwtDecode } from 'jwt-decode'; // Ensure you have installed this: npm install jwt-decode
 
-export const AuthContext = createContext(null);
+const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [isAuthChecked, setIsAuthChecked] = useState(false); // New state to track if initial auth check is done
+    const [currentUser, setCurrentUser] = useState(null);
+    const [loadingAuth, setLoadingAuth] = useState(true); // Tracks if auth state is still being determined
+    const navigate = useNavigate();
 
-  // This useEffect now explicitly monitors the presence of the 'token' in localStorage
-  // This is a more robust way to handle the "single source of truth" for authentication status.
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('currentUser');
-
-    if (token && storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
-        if (!currentUser || currentUser.id !== parsedUser.id) { // Only update if different or currently null
-          setCurrentUser(parsedUser);
+    // Function to decode token and set user data
+    const decodeTokenAndSetUser = useCallback((token) => {
+        if (token) {
+            try {
+                const decoded = jwtDecode(token);
+                // Check if token is expired
+                if (decoded.exp * 1000 < Date.now()) {
+                    console.log("Token expired, logging out.");
+                    localStorage.removeItem('token');
+                    setCurrentUser(null);
+                    return null; // Token expired
+                }
+                // Set current user based on decoded token
+                // Ensure the user object contains username as it's used in ProfilePage
+                setCurrentUser({
+                    id: decoded.userId,
+                    role: decoded.role,
+                    username: decoded.username // This is now present in the backend JWT payload
+                });
+                return decoded;
+            } catch (error) {
+                console.error("Failed to decode token or token is invalid:", error);
+                localStorage.removeItem('token');
+                setCurrentUser(null);
+                return null;
+            }
         }
-      } catch (e) {
-        console.error("Failed to parse currentUser from localStorage", e);
-        // If parsing fails, ensure storage is cleared
-        localStorage.removeItem('currentUser');
+        setCurrentUser(null); // No token, no user
+        return null;
+    }, []);
+
+    // Effect to check for token in localStorage on app load
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        setLoadingAuth(true); // Start auth loading
+        decodeTokenAndSetUser(token);
+        setLoadingAuth(false); // End auth loading
+    }, [decodeTokenAndSetUser]);
+
+    // Login function
+    const login = useCallback(async (token, user) => {
+        localStorage.setItem('token', token);
+        // We set the full user object received from login API for immediate use
+        setCurrentUser(user); 
+        // Also decode token to ensure consistent state and expiry check
+        decodeTokenAndSetUser(token); 
+    }, [decodeTokenAndSetUser]);
+
+    // Logout function
+    const logout = useCallback(() => {
         localStorage.removeItem('token');
+        // Removed localStorage.removeItem('currentUser') as currentUser is now derived from token or explicitly set by login.
         setCurrentUser(null);
-      }
-    } else if (currentUser) {
-      // If there's no token or stored user in localStorage, but currentUser state is not null,
-      // then the user is effectively logged out. Clear the state.
-      setCurrentUser(null);
+        navigate('/login'); // Redirect to login page on logout
+    }, [navigate]);
+
+    const authContextValue = {
+        currentUser,
+        setCurrentUser, 
+        login,
+        logout,
+        loadingAuth 
+    };
+
+    if (loadingAuth) {
+        // Simple loading indicator while authentication is being checked
+        return (
+            <div className="min-h-screen bg-gradient-to-b from-black via-[#73aeb7] to-[#652a37] text-white flex items-center justify-center">
+                <p className="text-xl">Initializing application...</p>
+            </div>
+        );
     }
-    setIsAuthChecked(true); // Mark that the initial check is complete
-  }, [currentUser]); // Depend on currentUser to trigger re-evaluation of localStorage.
 
-  // The actual login function remains the same
-  const login = (user, token) => {
-    setCurrentUser(user);
-    localStorage.setItem('token', token);
-    localStorage.setItem('currentUser', JSON.stringify(user));
-  };
-
-  // The actual logout function is crucial: it clears localStorage FIRST, then state.
-  const logout = () => {
-    // 1. Clear localStorage immediately. This is the primary persistent state.
-    localStorage.removeItem('token');
-    localStorage.removeItem('currentUser');
-    // 2. Clear React state. This should trigger re-renders in components.
-    setCurrentUser(null); // Set to null after localStorage is confirmed cleared
-    // 3. Provide user feedback
-    alert("You have been logged out successfully!");
-    // Navigation will be handled by the component calling this logout function (e.g., ProfilePage)
-  };
-
-  // Provide a loading state until the initial authentication check is complete
-  if (!isAuthChecked) {
-    return <div>Loading authentication...</div>; // Or a spinner/loading screen
-  }
-
-  return (
-    <AuthContext.Provider value={{ currentUser, login, logout, setCurrentUser }}>
-      {children}
-    </AuthContext.Provider>
-  );
+    return (
+        <AuthContext.Provider value={authContextValue}>
+            {children}
+        </AuthContext.Provider>
+    );
 };
 
 export const useAuth = () => {
-  return useContext(AuthContext);
+    const context = useContext(AuthContext);
+    if (context === undefined) {
+        throw new Error('useAuth must be used within an AuthProvider');
+    }
+    return context;
 };
