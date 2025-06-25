@@ -230,21 +230,37 @@ app.put('/api/user/profile', protect, async (req, res) => {
 // --- PUBLIC RESOURCE ROUTES ---
 
 // @route   GET /api/resources
-// @desc    Get all resources, with optional search functionality (includes non-available)
+// @desc    Get all resources, with optional search and category filtering
 // @access  Public
 app.get('/api/resources', async (req, res) => {
-    const { search } = req.query;
+    const { search, category } = req.query;
 
     let query = `
         SELECT r.resource_id, r.name, r.description, r.category, r.location, r.availability_status, r.posted_at, u.username as owner_username
         FROM Resources r
         JOIN Users u ON r.owner_id = u.user_id
-    `; // Removed WHERE r.availability_status = 'Available'
+    `;
+    const conditions = [];
     const queryParams = [];
+    let paramIndex = 1;
 
+    // Add search condition
     if (search) {
-        query += ` WHERE (r.name ILIKE $1 OR r.description ILIKE $1 OR r.category ILIKE $1)`;
+        conditions.push(`(r.name ILIKE $${paramIndex} OR r.description ILIKE $${paramIndex} OR r.category ILIKE $${paramIndex})`);
         queryParams.push(`%${search}%`);
+        paramIndex++;
+    }
+
+    // Add category filter condition
+    if (category) {
+        conditions.push(`r.category = $${paramIndex}`);
+        queryParams.push(category);
+        paramIndex++;
+    }
+
+    // Combine conditions
+    if (conditions.length > 0) {
+        query += ` WHERE ` + conditions.join(' AND ');
     }
 
     query += ` ORDER BY r.posted_at DESC`;
@@ -351,7 +367,6 @@ app.post('/api/requests', protect, async (req, res) => {
             return res.status(400).json({ msg: 'You cannot request your own item.' });
         }
 
-        // NEW LOGIC: Prevent requests if item is not 'Available'
         if (currentResourceStatus !== 'Available') {
             await client.query('ROLLBACK');
             return res.status(400).json({ msg: `This item is currently ${currentResourceStatus.toLowerCase()} and cannot be requested.` });
@@ -379,14 +394,12 @@ app.post('/api/requests', protect, async (req, res) => {
             [resourceId, requesterId, owner_id, pickupDate, returnDate, pickupMethod, messageToOwner, borrowLocation]
         );
 
-        // Update resource status to 'Reserved' upon successful request
         await client.query(
             `UPDATE Resources SET availability_status = 'Reserved', updated_at = CURRENT_TIMESTAMP
              WHERE resource_id = $1`,
             [resourceId]
         );
 
-        // Notify the owner about the new request
         await client.query(
             `INSERT INTO Notifications (user_id, related_request_id, message, type)
              VALUES ($1, $2, $3, $4)`,

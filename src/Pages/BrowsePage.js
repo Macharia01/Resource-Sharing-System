@@ -1,6 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom'; // Added useLocation
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
+
+// Define the available categories (keep consistent with CreateListingPage.js)
+const CATEGORIES = [
+    'Electronics',
+    'Tools',
+    'Books',
+    'Sporting Goods',
+    'Home Appliances',
+    'Clothing & Accessories',
+    'Furniture',
+    'Outdoor & Camping',
+    'Kitchenware',
+    'Toys & Games',
+    'Musical Instruments',
+    'Automotive',
+    'Garden Equipment',
+    'Art & Craft Supplies',
+    'Other'
+];
 
 // Custom Message Box Component (same as used in other pages for consistency)
 const MessageBox = ({ message, type, onClose }) => {
@@ -45,39 +64,44 @@ function BrowsePage() {
     const [error, setError] = useState(null);
     const { logout } = useAuth();
     const navigate = useNavigate();
-    const location = useLocation(); // To read query parameters
+    const location = useLocation();
     
-    // State for search query
     const [searchQuery, setSearchQuery] = useState('');
-    // State to hold the actual query that was used for fetching (to avoid immediate re-fetch on every keystroke)
-    const [activeSearchQuery, setActiveSearchQuery] = useState('');
+    const [activeSearchQuery, setActiveSearchQuery] = useState(''); // The search query that actually triggers the fetch
+
+    const [categoryFilter, setCategoryFilter] = useState(''); // Empty string means "All Categories"
+
+    const [messageBox, setMessageBox] = useState({ show: false, message: '', type: '' });
 
     const getAuthHeaders = useCallback(() => {
         const token = localStorage.getItem('token');
         return {
             'Content-Type': 'application/json',
-            'x-auth-token': token, // Still good practice to send, even if route is public
+            'x-auth-token': token,
         };
     }, []);
 
-    const [messageBox, setMessageBox] = useState({ show: false, message: '', type: '' });
-
-    const fetchResources = useCallback(async (query = '') => {
+    const fetchResources = useCallback(async (search = '', category = '') => {
         setLoading(true);
         setError(null);
 
-        const token = localStorage.getItem('token'); 
-        // Note: For a public browse page, token might not be strictly necessary for the GET /api/resources endpoint.
-        // However, if your backend requires it even for public reads, the AuthContext's logout/navigate will handle it.
-
         let url = 'http://localhost:5000/api/resources';
-        if (query) {
-            url += `?search=${encodeURIComponent(query)}`;
+        const queryParams = new URLSearchParams();
+
+        if (search) {
+            queryParams.append('search', search);
+        }
+        if (category) {
+            queryParams.append('category', category);
+        }
+
+        if (queryParams.toString()) {
+            url += `?${queryParams.toString()}`;
         }
 
         try {
             const response = await fetch(url, {
-                headers: getAuthHeaders(), // Always send headers, even if token is optional for this route
+                headers: getAuthHeaders(),
             });
 
             if (!response.ok) {
@@ -103,23 +127,23 @@ function BrowsePage() {
     }, [logout, navigate, getAuthHeaders]);
 
     useEffect(() => {
-        // Initial fetch on component mount
-        fetchResources(activeSearchQuery);
-    }, [fetchResources, activeSearchQuery]); // Depend on activeSearchQuery to trigger re-fetch
+        fetchResources(activeSearchQuery, categoryFilter);
+    }, [fetchResources, activeSearchQuery, categoryFilter]);
 
-    // Handler for search input change
     const handleSearchInputChange = (e) => {
         setSearchQuery(e.target.value);
     };
 
-    // Handler for search button click
     const handleSearchSubmit = (e) => {
         e.preventDefault();
-        setActiveSearchQuery(searchQuery); // Update active search query to trigger fetch
+        setActiveSearchQuery(searchQuery);
+    };
+
+    const handleCategoryFilterChange = (e) => {
+        setCategoryFilter(e.target.value);
     };
 
     useEffect(() => {
-        // Disable body scroll when messagebox is open
         if (messageBox.show) {
             document.body.style.overflow = 'hidden';
         } else {
@@ -153,22 +177,38 @@ function BrowsePage() {
                     Browse Available Resources
                 </h2>
 
-                {/* Search Bar */}
-                <form onSubmit={handleSearchSubmit} className="mb-8 flex space-x-4">
-                    <input
-                        type="text"
-                        placeholder="Search by name, description, or category..."
-                        value={searchQuery}
-                        onChange={handleSearchInputChange}
-                        className="flex-grow px-4 py-2 rounded-md bg-gray-800 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500"
-                    />
-                    <button
-                        type="submit"
-                        className="px-6 py-2 bg-pink-600 text-white rounded-md hover:bg-pink-700 transition-colors font-semibold"
+                {/* Search & Filter Bar */}
+                <div className="mb-8 flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 items-center"> {/* Added items-center */}
+                    <form onSubmit={handleSearchSubmit} className="flex flex-grow space-x-2">
+                        <input
+                            type="text"
+                            placeholder="Search by name, description..."
+                            value={searchQuery}
+                            onChange={handleSearchInputChange}
+                            className="flex-grow px-4 py-2 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                        />
+                        <button
+                            type="submit"
+                            className="px-6 py-2 bg-pink-600 text-white rounded-md hover:bg-pink-700 transition-colors font-semibold"
+                        >
+                            Search
+                        </button>
+                    </form>
+
+                    {/* NEW: "Filter by:" text */}
+                    <span className="text-gray-300 sm:ml-4 flex-shrink-0">Filter by:</span>
+                    {/* Category Filter Dropdown */}
+                    <select
+                        value={categoryFilter}
+                        onChange={handleCategoryFilterChange}
+                        className="px-4 py-2 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 sm:w-1/3 md:w-1/4 lg:w-1/5"
                     >
-                        Search
-                    </button>
-                </form>
+                        <option value="">All Categories</option> {/* Option to view all categories */}
+                        {CATEGORIES.map((cat) => (
+                            <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                    </select>
+                </div>
 
                 {resources.length === 0 ? (
                     <p className="text-center text-lg text-gray-300">No resources found matching your criteria. Be the first to list one!</p>

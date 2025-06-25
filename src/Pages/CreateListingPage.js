@@ -2,6 +2,25 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 
+// Define the available categories
+const CATEGORIES = [
+    'Electronics',
+    'Tools',
+    'Books',
+    'Sporting Goods',
+    'Home Appliances',
+    'Clothing & Accessories',
+    'Furniture',
+    'Outdoor & Camping',
+    'Kitchenware',
+    'Toys & Games',
+    'Musical Instruments',
+    'Automotive',
+    'Garden Equipment',
+    'Art & Craft Supplies',
+    'Other' // Catch-all for miscellaneous items
+];
+
 // Custom Message Box Component (copied for consistency)
 const MessageBox = ({ message, type, onClose }) => {
     let bgColor = '';
@@ -41,11 +60,12 @@ const MessageBox = ({ message, type, onClose }) => {
 
 function CreateListingPage() {
     const navigate = useNavigate();
-    const { currentUser, logout, loadingAuth } = useAuth(); // Added loadingAuth
+    const { currentUser, logout, loadingAuth } = useAuth();
 
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
-    const [category, setCategory] = useState('');
+    // Initialize category with the first item or an empty string/placeholder
+    const [category, setCategory] = useState(CATEGORIES[0] || ''); 
     const [location, setLocation] = useState('');
     const [availabilityStatus, setAvailabilityStatus] = useState('Available');
     const [loading, setLoading] = useState(false);
@@ -60,17 +80,15 @@ function CreateListingPage() {
     }, []);
 
     useEffect(() => {
-        if (!loadingAuth && !currentUser) { // Check loadingAuth before redirecting
+        if (!loadingAuth && !currentUser) {
             setMessageBox({ show: true, message: "You need to be logged in to create a listing.", type: 'info' });
-            logout();
-            // Using a timeout for messagebox to show before redirect
             setTimeout(() => navigate('/login'), 1500); 
         }
     }, [currentUser, navigate, logout, loadingAuth]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setMessageBox({ show: false, message: '', type: '' }); // Clear previous messages
+        setMessageBox({ show: false, message: '', type: '' });
         setLoading(true);
 
         const token = localStorage.getItem('token');
@@ -85,7 +103,7 @@ function CreateListingPage() {
         const listingData = {
             name,
             description,
-            category,
+            category, // This will now be from the dropdown
             location,
             availability_status: availabilityStatus,
         };
@@ -101,7 +119,6 @@ function CreateListingPage() {
 
             if (response.ok) {
                 setMessageBox({ show: true, message: "Resource listing created successfully!", type: 'success' });
-                // Navigate after message is acknowledged, or after a short delay
                 setTimeout(() => navigate('/profile'), 1500);
             } else {
                 setMessageBox({ show: true, message: `Failed to create listing: ${data.msg || 'Unknown error'}`, type: 'error' });
@@ -115,7 +132,6 @@ function CreateListingPage() {
         }
     };
 
-    // Render nothing or a loading spinner while auth is loading
     if (loadingAuth || !currentUser) {
         return null;
     }
@@ -132,8 +148,6 @@ function CreateListingPage() {
                     </p>
                 </div>
                 <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-                    {/* Error display handled by MessageBox now */}
-
                     <div>
                         <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-1">
                             Item Name
@@ -170,16 +184,19 @@ function CreateListingPage() {
                         <label htmlFor="category" className="block text-sm font-medium text-gray-300 mb-1">
                             Category
                         </label>
-                        <input
+                        {/* CATEGORY DROPDOWN */}
+                        <select
                             id="category"
                             name="category"
-                            type="text"
                             required
-                            className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-pink-500 focus:border-pink-500 sm:text-sm"
-                            placeholder="e.g., Tools, Electronics, Books"
+                            className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-pink-500 focus:border-pink-500 sm:text-sm bg-white"
                             value={category}
                             onChange={(e) => setCategory(e.target.value)}
-                        />
+                        >
+                            {CATEGORIES.map((cat) => (
+                                <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                        </select>
                     </div>
 
                     <div>
@@ -207,7 +224,7 @@ function CreateListingPage() {
                             name="availabilityStatus"
                             value={availabilityStatus}
                             onChange={(e) => setAvailabilityStatus(e.target.value)}
-                            className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-pink-500 focus:border-pink-500 sm:text-sm bg-white"
+                            className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 sm:text-sm bg-white"
                             required
                         >
                             <option value="Available">Available</option>
@@ -232,7 +249,6 @@ function CreateListingPage() {
                     type={messageBox.type}
                     onClose={() => {
                         setMessageBox({ ...messageBox, show: false });
-                        // Optionally navigate after user acknowledges if it was an error requiring login
                         if (messageBox.type === 'error' && messageBox.message.includes('Authentication token not found')) {
                              navigate('/login');
                         }
