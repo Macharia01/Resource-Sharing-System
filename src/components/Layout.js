@@ -51,16 +51,18 @@ function Layout({ children }) {
 
     return (
         <div className="min-h-screen flex flex-col">
-            {/* Header / Navbar */}
-            <header className="bg-black text-white p-4 shadow-md">
+            {/* Header / Navbar - Added fixed positioning classes */}
+            <header className="bg-black text-white p-4 shadow-md w-full z-50 fixed top-0 left-0">
                 <div className="container mx-auto flex justify-between items-center">
+                    {/* ShareNet logo/text remains a home link */}
                     <Link to="/" className="text-2xl font-bold text-pink-600 hover:text-pink-400 transition-colors">
                         ShareNet
                     </Link>
                     <nav className="flex space-x-6 items-center">
-                      <Link
-                            to="/Homepage"
-                            className={`hover:text-pink-400 transition-colors ${location.pathname === '/browse' ? 'text-pink-400' : ''}`}
+                        {/* Explicit Home link */}
+                        <Link
+                            to="/"
+                            className={`hover:text-pink-400 transition-colors ${location.pathname === '/' ? 'text-pink-400' : ''}`}
                         >
                             Home
                         </Link>
@@ -78,13 +80,7 @@ function Layout({ children }) {
                                 >
                                     List Item
                                 </Link>
-                                <Link
-                                    to="/profile"
-                                    className={`hover:text-pink-400 transition-colors ${location.pathname === '/profile' ? 'text-pink-400' : ''}`}
-                                >
-                                    Profile ({currentUser.username})
-                                </Link>
-                                {/* NEW: Notifications Link */}
+                                {/* Swapped position: Notifications now comes before Profile */}
                                 <Link
                                     to="/notifications"
                                     className={`relative hover:text-pink-400 transition-colors ${location.pathname === '/notifications' ? 'text-pink-400' : ''}`}
@@ -96,6 +92,12 @@ function Layout({ children }) {
                                         </span>
                                     )}
                                 </Link>
+                                <Link
+                                    to="/profile"
+                                    className={`hover:text-pink-400 transition-colors ${location.pathname === '/profile' ? 'text-pink-400' : ''}`}
+                                >
+                                    Profile ({currentUser.username})
+                                </Link>
 
                                 {currentUser.role === 'admin' && (
                                     <Link
@@ -105,12 +107,6 @@ function Layout({ children }) {
                                         Admin
                                     </Link>
                                 )}
-                                <button
-                                    onClick={logout}
-                                    className="px-4 py-2 bg-pink-600 rounded-md hover:bg-pink-700 transition-colors"
-                                >
-                                    Logout
-                                </button>
                             </>
                         ) : (
                             <>
@@ -132,8 +128,8 @@ function Layout({ children }) {
                 </div>
             </header>
 
-            {/* Main Content */}
-            <main className="flex-grow">
+            {/* Main Content - Added padding-top to prevent content from going under the fixed header */}
+            <main className="flex-grow pt-16"> {/* Adjust pt-16 if your header height changes */}
                 {children}
             </main>
 

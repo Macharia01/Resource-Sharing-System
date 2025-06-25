@@ -40,8 +40,7 @@ function App() {
           </div>
           <div>
             <div className="text-pink-600 text-4xl mb-4">📦</div>
-            <h4 className="font-semibold text-xl mb-2"><Link
-              to="/create-listing" className="bg-pink-600 text-white px-2 py-0.5 rounded hover:bg-pink-700 transition">List</Link> or Browse
+            <h4 className="font-semibold text-xl mb-2">List or Browse
             </h4>
             <p>Offer resources you own or browse what others are sharing.</p>
           </div>
