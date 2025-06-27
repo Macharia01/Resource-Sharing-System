@@ -105,7 +105,7 @@ export const AuthProvider = ({ children }) => {
         // Prioritize data from API response, but ensure 'id' from token is used for consistency
         const decodedUser = decodeToken(token);
         if (decodedUser) {
-             // Merge API user data with decoded ID/role (API might have more fields)
+            // Merge API user data with decoded ID/role (API might have more fields)
             setCurrentUser({ ...userFromApi, ...decodedUser });
             await fetchUnreadNotificationsCount(decodedUser); // Fetch notifications right after login
         } else {
@@ -131,8 +131,9 @@ export const AuthProvider = ({ children }) => {
         login,
         logout,
         loadingAuth,
-        unreadNotificationsCount, // Expose the unread count
-        refreshUnreadNotificationsCount: fetchUnreadNotificationsCount // Expose a method to refresh the count
+        isLoggedIn: !!currentUser, // CORRECTED: Added isLoggedIn derived from currentUser
+        unreadNotificationsCount, 
+        refreshUnreadNotificationsCount: fetchUnreadNotificationsCount 
     };
 
     // Render loading indicator if authentication is still in progress

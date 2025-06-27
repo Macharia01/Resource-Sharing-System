@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../AuthContext'; // Assuming AuthContext provides `currentUser`
+import { useAuth } from '../AuthContext'; 
 
-// Custom Message Box Component
+// Custom Message Box Component (re-used for consistency)
 const MessageBox = ({ message, type, onClose }) => {
     let bgColor = '';
     let textColor = '';
@@ -39,63 +39,177 @@ const MessageBox = ({ message, type, onClose }) => {
     );
 };
 
-// Star Rating Component (reusable)
-const StarRating = ({ rating, setRating, editable = false }) => {
+// Review Submission Modal
+const ReviewModal = ({ resource, onSaveReview, onClose, hasExistingReview, relatedCompletedRequestId }) => {
+    const [rating, setRating] = useState(0);
+    const [comment, setComment] = useState('');
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (rating === 0) {
+            alert('Please select a rating!'); 
+            return;
+        }
+        onSaveReview({ relatedRequestId: relatedCompletedRequestId, rating, comment });
+    };
+
     return (
-        <div className="flex justify-center items-center my-2">
-            {[...Array(5)].map((star, index) => {
-                index += 1;
-                return (
-                    <button
-                        type="button"
-                        key={index}
-                        className={`text-3xl ${index <= rating ? "text-yellow-400" : "text-gray-300"} ${editable ? "cursor-pointer" : "cursor-default"}`}
-                        onClick={() => editable && setRating(index)}
-                        onMouseEnter={() => {}}
-                        onMouseLeave={() => {}}
-                    >
-                        &#9733; {/* Unicode star character */}
-                    </button>
-                );
-            })}
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full relative my-8 text-gray-900">
+                <button
+                    onClick={onClose}
+                    className="absolute top-3 right-3 text-gray-500 hover:text-gray-800 text-3xl font-bold p-1 rounded-full hover:bg-gray-200 transition-colors leading-none"
+                    aria-label="Close modal"
+                >
+                    &times;
+                </button>
+                <h3 className="text-2xl font-bold text-pink-700 mb-6 text-center">Leave a Review for {resource.name}</h3>
+                {hasExistingReview ? (
+                    <p className="text-center text-red-600 mb-4">You have already submitted a review for this completed transaction.</p>
+                ) : (
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-gray-700 text-sm font-medium mb-1">Rating:</label>
+                            <div className="flex justify-center space-x-1">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                    <svg
+                                        key={star}
+                                        onClick={() => setRating(star)}
+                                        className={`w-8 h-8 cursor-pointer ${
+                                            star <= rating ? 'text-yellow-500' : 'text-gray-300'
+                                        }`}
+                                        fill="currentColor"
+                                        viewBox="0 0 20 20"
+                                    >
+                                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.683-1.532 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.777.565-1.832-.197-1.532-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.462a1 1 0 00.95-.69l1.07-3.292z"></path>
+                                    </svg>
+                                ))}
+                            </div>
+                        </div>
+                        <div>
+                            <label htmlFor="comment" className="block text-gray-700 text-sm font-medium mb-1">Comment (Optional):</label>
+                            <textarea
+                                id="comment"
+                                name="comment"
+                                value={comment}
+                                onChange={(e) => setComment(e.target.value)}
+                                rows="4"
+                                className="block w-full" // Minimal styling
+                                placeholder="Share your experience..."
+                            ></textarea>
+                        </div>
+                        <div className="flex justify-end space-x-4 mt-6">
+                            <button type="button" onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100">Cancel</button>
+                            <button type="submit" className="px-6 py-2 bg-pink-600 text-white rounded-md hover:bg-pink-700">Submit Review</button>
+                        </div>
+                    </form>
+                )}
+            </div>
+        </div>
+    );
+};
+
+
+// Borrow Request Modal
+const BorrowRequestModal = ({ resource, onClose, onSubmitRequest }) => {
+    const [pickupDate, setPickupDate] = useState('');
+    const [returnDate, setReturnDate] = useState('');
+    const [pickupMethod, setPickupMethod] = useState('Meetup'); // Default value
+    const [messageToOwner, setMessageToOwner] = useState('');
+    const [borrowLocation, setBorrowLocation] = useState(resource.location || ''); // Pre-fill with resource location
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        // Basic validation
+        if (!pickupDate || !returnDate || !pickupMethod || !borrowLocation) {
+            alert('Please fill in all required fields for the borrow request.');
+            return;
+        }
+        if (new Date(pickupDate) > new Date(returnDate)) {
+            alert('Return date cannot be before pickup date.');
+            return;
+        }
+
+        onSubmitRequest({
+            resourceId: resource.resource_id,
+            pickupDate,
+            returnDate,
+            pickupMethod,
+            messageToOwner,
+            borrowLocation,
+        });
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full relative my-8 text-gray-900">
+                <button
+                    onClick={onClose}
+                    className="absolute top-3 right-3 text-gray-500 hover:text-gray-800 text-3xl font-bold p-1 rounded-full hover:bg-gray-200 transition-colors leading-none"
+                    aria-label="Close modal"
+                >
+                    &times;
+                </button>
+                <h3 className="text-2xl font-bold text-pink-700 mb-6 text-center">Request to Borrow: {resource.name}</h3>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label htmlFor="pickupDate" className="block text-gray-700 text-sm font-medium mb-1">Pickup Date:</label>
+                        <input type="date" id="pickupDate" name="pickupDate" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} required
+                            className="block w-full" /> 
+                    </div>
+                    <div>
+                        <label htmlFor="returnDate" className="block text-gray-700 text-sm font-medium mb-1">Return Date:</label>
+                        <input type="date" id="returnDate" name="returnDate" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} required
+                            className="block w-full" /> 
+                    </div>
+                    <div>
+                        <label htmlFor="pickupMethod" className="block text-gray-700 text-sm font-medium mb-1">Pickup Method:</label>
+                        <select id="pickupMethod" name="pickupMethod" value={pickupMethod} onChange={(e) => setPickupMethod(e.target.value)} required
+                            className="block w-full bg-white" > 
+                            <option value="Meetup">Meetup</option>
+                            <option value="Delivery">Delivery</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="borrowLocation" className="block text-gray-700 text-sm font-medium mb-1">Borrow Location:</label>
+                        <input type="text" id="borrowLocation" name="borrowLocation" value={borrowLocation} onChange={(e) => setBorrowLocation(e.target.value)} required
+                            className="block w-full" 
+                            placeholder="e.g., Nairobi CBD, Owner's Address" /> 
+                    </div>
+                    <div>
+                        <label htmlFor="messageToOwner" className="block text-gray-700 text-sm font-medium mb-1">Message to Owner (Optional):</label>
+                        <textarea id="messageToOwner" name="messageToOwner" value={messageToOwner} onChange={(e) => setMessageToOwner(e.target.value)}
+                            rows="3" className="block w-full"
+                            placeholder="Any specific instructions or questions?"></textarea> 
+                    </div>
+                    <div className="flex justify-end space-x-4 mt-6">
+                        <button type="button" onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100">Cancel</button>
+                        <button type="submit" className="px-6 py-2 bg-pink-600 text-white rounded-md hover:bg-pink-700">Submit Request</button>
+                    </div>
+                </form>
+            </div>
         </div>
     );
 };
 
 
 function ItemDetailPage() {
-    const { id } = useParams();
-    const [resource, setResource] = useState(null);
+    const { id } = useParams(); 
+    const navigate = useNavigate();
+    const { currentUser, isLoggedIn, loadingAuth } = useAuth(); 
+    
+    const [item, setItem] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const { currentUser, logout } = useAuth(); // `currentUser` might be null initially
-    const navigate = useNavigate();
-
-    // State to explicitly track if the current user is the owner
-    const [isCurrentUserOwner, setIsCurrentUserOwner] = useState(false);
-
-    // Borrow Request States
-    const [showBorrowForm, setShowBorrowForm] = useState(false);
-    const [pickupDate, setPickupDate] = useState('');
-    const [returnDate, setReturnDate] = useState('');
-    const [pickupMethod, setPickupMethod] = useState('');
-    const [messageToOwner, setMessageToOwner] = useState('');
-    const [borrowLocation, setBorrowLocation] = useState('');
-    const [requestSending, setRequestSending] = useState(false);
-
-    // Reviews States
-    const [reviews, setReviews] = useState([]);
-    const [reviewsLoading, setReviewsLoading] = useState(true);
-    const [reviewsError, setReviewsError] = useState(null);
-    const [showReviewForm, setShowReviewForm] = useState(false);
-    const [reviewRating, setReviewRating] = useState(0); // 1-5 stars
-    const [reviewComment, setReviewComment] = useState('');
-    const [reviewSubmitting, setReviewSubmitting] = useState(false);
-    // Stores the specific completed request that is eligible for review by this user
-    const [eligibleRequestForReview, setEligibleRequestForReview] = useState(null); 
-
-    // Message Box State
     const [messageBox, setMessageBox] = useState({ show: false, message: '', type: '' });
+
+    const [reviews, setReviews] = useState([]); 
+    const [isReviewModalOpen, setIsReviewModalOpen] = useState(false); 
+    const [canReview, setCanReview] = useState(false); 
+    const [relatedCompletedRequestId, setRelatedCompletedRequestId] = useState(null); 
+    const [hasExistingReview, setHasExistingReview] = useState(false); 
+
+    const [isBorrowModalOpen, setIsBorrowModalOpen] = useState(false);
 
     const getAuthHeaders = useCallback(() => {
         const token = localStorage.getItem('token');
@@ -105,293 +219,185 @@ function ItemDetailPage() {
         };
     }, []);
 
-    // Effect to fetch resource details
-    useEffect(() => {
-        const fetchResourceDetails = async () => {
-            setLoading(true);
-            setError(null);
-
-            try {
-                const response = await fetch(`http://localhost:5000/api/resources/${id}`);
-
-                if (!response.ok) {
-                    const errData = await response.json();
-                    if (response.status === 404) {
-                        setError(`Resource not found: ${errData.msg}`);
-                    } else if (response.status === 401 || response.status === 403) {
-                        setMessageBox({ show: true, message: 'Session expired or unauthorized. Please log in again.', type: 'error' });
-                        logout();
-                        navigate('/login');
-                    } else {
-                        setError(`Failed to fetch resource details: ${errData.msg || 'Unknown error'}`);
-                    }
-                    return;
-                }
-
-                const data = await response.json();
-                setResource(data);
-                setBorrowLocation(data.location); // Set initial borrow location from item data
-            } catch (err) {
-                console.error("Error fetching item details:", err);
-                setError(err.message || 'An error occurred while fetching item details.');
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        if (id) {
-            fetchResourceDetails();
-        } else {
-            setError('No resource ID provided.');
-            setLoading(false);
-        }
-    }, [id, logout, navigate, getAuthHeaders]);
-
-
-    // NEW/IMPROVED EFFECT: Determine if currentUser is the owner, ensuring both are loaded
-    useEffect(() => {
-        // Ensure both currentUser and resource are loaded and have their respective ID properties
-        if (currentUser && currentUser.id && resource && resource.owner_id) {
-            // Convert both IDs to lowercase for case-insensitive comparison (UUIDs are case-insensitive)
-            const isOwner = currentUser.id.toLowerCase() === resource.owner_id.toLowerCase();
-            setIsCurrentUserOwner(isOwner);
-
-            // Debugging logs for this specific issue
-            console.log('--- isCurrentUserOwner Debug ---');
-            console.log('currentUser.id:', currentUser.id);
-            console.log('resource.owner_id:', resource.owner_id);
-            console.log('isOwner (calculated in useEffect):', isOwner);
-            console.log('--- End isCurrentUserOwner Debug ---');
-
-        } else {
-            // If either is not fully loaded or doesn't have an ID, assume not owner (or still loading)
-            setIsCurrentUserOwner(false);
-        }
-    }, [currentUser, resource]); // Re-run when currentUser or resource changes
-
-
-    // Effect to fetch reviews for the resource
-    const fetchReviews = useCallback(async () => {
-        setReviewsLoading(true);
-        setReviewsError(null);
+    const fetchItemDetails = useCallback(async () => {
+        setLoading(true);
+        setError(null);
         try {
-            const response = await fetch(`http://localhost:5000/api/resources/${id}/reviews`);
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(`Failed to fetch reviews: ${errorData.msg || response.statusText}`);
-            }
+            const response = await fetch(`http://localhost:5000/api/resources/${id}`);
             const data = await response.json();
-            setReviews(data);
+            if (!response.ok) {
+                throw new Error(data.msg || 'Failed to fetch item details.');
+            }
+            setItem(data);
         } catch (err) {
-            console.error("Error fetching reviews:", err);
-            setReviewsError('Failed to load reviews.');
+            console.error("Error fetching item details:", err);
+            setError('Could not load item details. Please try again.');
         } finally {
-            setReviewsLoading(false);
+            setLoading(false);
         }
     }, [id]);
 
-    useEffect(() => {
-        if (id) {
-            fetchReviews();
+    const fetchReviews = useCallback(async () => {
+        try {
+            const response = await fetch(`http://localhost:5000/api/resources/${id}/reviews`);
+            const data = await response.json();
+            if (!response.ok) {
+                if (response.status !== 404) { 
+                    console.error("Failed to fetch reviews:", data.msg);
+                }
+                setReviews([]); 
+                return;
+            }
+            setReviews(data);
+        } catch (err) {
+            console.error("Error fetching reviews:", err);
+            setReviews([]); 
         }
-    }, [id, fetchReviews]);
+    }, [id]);
 
+    const checkReviewEligibility = useCallback(async () => {
+        if (loadingAuth || !isLoggedIn || !currentUser || !id) { 
+            console.log("DEBUG_REVIEW: Skipping eligibility check. Auth not ready or not logged in.");
+            setCanReview(false);
+            setHasExistingReview(false);
+            setRelatedCompletedRequestId(null);
+            return;
+        }
+        console.log("DEBUG_REVIEW: Starting eligibility check for user:", currentUser.id, " item:", id);
 
-    // Effect to determine if the current user can submit a review
-    useEffect(() => {
-        const checkReviewEligibility = async () => {
-            // First, ensure all necessary data is loaded, user is logged in, and user is NOT the owner
-            if (!currentUser || !resource || reviewsLoading || isCurrentUserOwner) { // Use new state variable here
-                setEligibleRequestForReview(null); 
-                return; 
+        try {
+            const response = await fetch(`http://localhost:5000/api/requests/sent`, {
+                headers: getAuthHeaders(),
+            });
+            const data = await response.json();
+            console.log("DEBUG_REVIEW: Response from /api/requests/sent (full data):", data); 
+
+            if (!response.ok) {
+                console.error("DEBUG_REVIEW: Failed to fetch sent requests for review eligibility:", data.msg);
+                setCanReview(false);
+                setHasExistingReview(false);
+                setRelatedCompletedRequestId(null);
+                return;
             }
 
-            try {
-                // Fetch requests sent by the current user
-                const response = await fetch('http://localhost:5000/api/requests/sent', {
-                    headers: getAuthHeaders()
+            debugger; // <--- Added debugger here for precise inspection
+            // Find a completed request for this resource by the current user
+            const completedRequest = data.find(
+                (req) => {
+                    const isResourceMatch = String(req.resource_id).trim() === String(id).trim();
+                    const isRequesterMatch = String(req.requester_id).trim() === String(currentUser.id).trim();
+                    const isStatusCompleted = req.status === 'Completed';
+
+                    console.log(`DEBUG_FIND: Checking request_id: ${req.request_id}`);
+                    console.log(`DEBUG_FIND:   Resource ID Match: ${isResourceMatch} (Req: '${String(req.resource_id).trim()}' vs Item: '${String(id).trim()}')`);
+                    console.log(`DEBUG_FIND:   Requester ID Match: ${isRequesterMatch} (Req: '${String(req.requester_id).trim()}' vs CurrentUser: '${String(currentUser.id).trim()}')`);
+                    console.log(`DEBUG_FIND:   Status Completed: ${isStatusCompleted} (Req: '${req.status}')`);
+                    console.log(`DEBUG_FIND:   Overall Match: ${isResourceMatch && isRequesterMatch && isStatusCompleted}`);
+                    
+                    return isResourceMatch && isRequesterMatch && isStatusCompleted;
+                }
+            );
+            console.log("DEBUG_REVIEW: Found completed request (after filter):", completedRequest);
+
+
+            if (completedRequest) {
+                // Check if a review already exists for this specific completed transaction
+                const existingReviewCheck = await fetch(`http://localhost:5000/api/reviews/check-existing/${completedRequest.request_id}`, {
+                    headers: getAuthHeaders(),
                 });
-                if (!response.ok) {
-                    console.error('Failed to fetch sent requests to check review eligibility.');
-                    setEligibleRequestForReview(null);
-                    return;
-                }
-                const requests = await response.json();
+                const existingReviewData = await existingReviewCheck.json();
+                console.log("DEBUG_REVIEW: Existing review check response:", existingReviewData);
 
-                // Find a completed request by the current user (requester_id) for THIS specific resource
-                const completedReq = requests.find(req => 
-                    req.resource_id === id && 
-                    req.status === 'Completed' &&
-                    req.requester_id === currentUser.id // Explicitly ensure current user is the requester
-                );
-
-                if (completedReq) {
-                    // Check if a review for this specific completed request already exists
-                    const existingReview = reviews.find(review => 
-                        review.related_request_id === completedReq.request_id &&
-                        review.reviewer_id === currentUser.id // Explicitly ensure the existing review is by the current user
-                    );
-
-                    if (!existingReview) {
-                        setEligibleRequestForReview(completedReq); 
-                    } else {
-                        setEligibleRequestForReview(null); 
-                    }
+                if (existingReviewCheck.ok && existingReviewData.hasReview) {
+                    console.log("DEBUG_REVIEW: User has existing review for this completed request.");
+                    setCanReview(false);
+                    setHasExistingReview(true); 
+                    setRelatedCompletedRequestId(completedRequest.request_id);
                 } else {
-                    setEligibleRequestForReview(null); 
+                    console.log("DEBUG_REVIEW: User is eligible to review.");
+                    setCanReview(true);
+                    setHasExistingReview(false);
+                    setRelatedCompletedRequestId(completedRequest.request_id);
                 }
-
-            } catch (err) {
-                console.error("Error checking review eligibility:", err);
-                setEligibleRequestForReview(null);
+            } else {
+                console.log("DEBUG_REVIEW: No completed request found for this item by this user.");
+                setCanReview(false);
+                setHasExistingReview(false);
+                setRelatedCompletedRequestId(null);
             }
-        };
-
-        if (currentUser && resource && id && !reviewsLoading) { // Only run if reviews are done loading too
-            checkReviewEligibility();
+        } catch (err) {
+            console.error("DEBUG_REVIEW: Error checking review eligibility:", err);
+            setCanReview(false);
+            setHasExistingReview(false);
+            setRelatedCompletedRequestId(null);
         }
-    }, [currentUser, resource, id, reviews, reviewsLoading, isCurrentUserOwner, getAuthHeaders]); // Add isCurrentUserOwner to deps
+    }, [isLoggedIn, currentUser, id, getAuthHeaders, loadingAuth]);
 
 
-    // Effect to control body overflow when modals are open
-    useEffect(() => {
-        if (showBorrowForm || showReviewForm || messageBox.show) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = 'unset';
+    const handleSaveReview = async ({ relatedRequestId, rating, comment }) => {
+        try {
+            const response = await fetch('http://localhost:5000/api/reviews', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ relatedRequestId, rating, comment }),
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                setMessageBox({ show: true, message: data.msg || 'Failed to submit review.', type: 'error' });
+                return;
+            }
+
+            setMessageBox({ show: true, message: 'Review submitted successfully!', type: 'success' });
+            setIsReviewModalOpen(false); 
+            fetchReviews(); 
+            checkReviewEligibility(); 
+        } catch (err) {
+            console.error("Error submitting review:", err);
+            setMessageBox({ show: true, message: 'An error occurred while submitting your review.', type: 'error' });
         }
-        return () => {
-            document.body.style.overflow = 'unset';
-        };
-    }, [showBorrowForm, showReviewForm, messageBox.show]);
+    };
 
-
-    // Handler for submitting borrow request
-    const handleSubmitBorrowRequest = async (e) => {
-        e.preventDefault();
-
-        // This check ensures the form cannot be submitted by an owner, even if the button somehow appeared enabled.
-        if (isCurrentUserOwner) { // Use the dedicated state variable
-            setMessageBox({ show: true, message: "You cannot borrow your own item.", type: 'info' });
-            setShowBorrowForm(false); 
-            return;
-        }
-
-        if (!currentUser) {
-            setMessageBox({ show: true, message: "You must be logged in to submit a borrow request.", type: 'error' });
-            navigate('/login');
-            return;
-        }
-
-        setRequestSending(true);
-        setError(null); 
-
-        const token = localStorage.getItem('token');
-        if (!token) {
-            setMessageBox({ show: true, message: "Authentication token missing. Please log in.", type: 'error' });
-            setRequestSending(false);
-            logout();
-            navigate('/login');
-            return;
-        }
-
-        const requestData = {
-            resourceId: resource.resource_id,
-            pickupDate,
-            returnDate,
-            pickupMethod,
-            messageToOwner,
-            borrowLocation
-        };
-
+    const handleBorrowRequestSubmit = async (requestData) => {
         try {
             const response = await fetch('http://localhost:5000/api/requests', {
                 method: 'POST',
                 headers: getAuthHeaders(),
                 body: JSON.stringify(requestData),
             });
-
             const data = await response.json();
 
-            if (response.ok) {
-                setMessageBox({ show: true, message: data.msg, type: 'success' });
-                setShowBorrowForm(false);
-                setPickupDate('');
-                setReturnDate('');
-                setPickupMethod('');
-                setMessageToOwner('');
-                setBorrowLocation(resource.location); 
-                // Re-fetch resource details to update its availability status on the page
-                const updatedResourceResponse = await fetch(`http://localhost:5000/api/resources/${id}`);
-                const updatedResourceData = await updatedResourceResponse.json();
-                setResource(updatedResourceData);
-            } else {
-                setMessageBox({ show: true, message: `Failed to submit request: ${data.msg || 'Unknown error'}`, type: 'error' });
-                console.error("Borrow request submission error:", data);
+            if (!response.ok) {
+                setMessageBox({ show: true, message: data.msg || 'Failed to submit borrow request.', type: 'error' });
+                return;
             }
+
+            setMessageBox({ show: true, message: data.msg, type: 'success' });
+            setIsBorrowModalOpen(false); 
+            fetchItemDetails(); 
         } catch (err) {
-            console.error("Network or fetch error during borrow request:", err);
-            setMessageBox({ show: true, message: 'An error occurred while submitting your request. Please try again.', type: 'error' });
-        } finally {
-            setRequestSending(false);
+            console.error("Error submitting borrow request:", err);
+            setMessageBox({ show: true, message: 'An error occurred while submitting your borrow request.', type: 'error' });
         }
     };
 
 
-    // Handler for submitting review
-    const handleSubmitReview = async (e) => {
-        e.preventDefault();
+    useEffect(() => {
+        fetchItemDetails();
+        fetchReviews();
+    }, [fetchItemDetails, fetchReviews]);
 
-        if (!eligibleRequestForReview) {
-            setMessageBox({ show: true, message: "No eligible completed request found to review this item.", type: 'error' });
-            return;
+    useEffect(() => {
+        if (!loadingAuth && item) { 
+            checkReviewEligibility();
         }
-        if (reviewRating === 0) {
-            setMessageBox({ show: true, message: "Please select a star rating (1-5).", type: 'error' });
-            return;
-        }
+    }, [loadingAuth, item, checkReviewEligibility]);
 
-        setReviewSubmitting(true);
-
-        const reviewData = {
-            requestId: eligibleRequestForReview.request_id, 
-            rating: reviewRating,
-            comment: reviewComment
-        };
-
-        try {
-            const response = await fetch('http://localhost:5000/api/reviews', {
-                method: 'POST',
-                headers: getAuthHeaders(),
-                body: JSON.stringify(reviewData)
-            });
-
-            const data = await response.json();
-
-            if (response.ok) {
-                setMessageBox({ show: true, message: "Review submitted successfully!", type: 'success' });
-                setShowReviewForm(false);
-                setReviewRating(0);
-                setReviewComment('');
-                setEligibleRequestForReview(null); 
-                fetchReviews(); 
-            } else {
-                setMessageBox({ show: true, message: `Failed to submit review: ${data.msg || 'Unknown error'}`, type: 'error' });
-                console.error("Review submission error:", data);
-            }
-        } catch (err) {
-            console.error("Network or fetch error during review submission:", err);
-            setMessageBox({ show: true, message: 'An error occurred while submitting your review. Please try again.', type: 'error' });
-        } finally {
-            setReviewSubmitting(false);
-        }
-    };
-
-
-    if (loading) {
+    
+    if (loading || loadingAuth) { 
         return (
             <div className="min-h-screen bg-gradient-to-b from-black via-[#73aeb7] to-[#652a37] text-white font-sans flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-                <p className="text-xl">Loading item details...</p>
+                <p className="text-xl">Loading item details and user session...</p>
             </div>
         );
     }
@@ -399,310 +405,155 @@ function ItemDetailPage() {
     if (error) {
         return (
             <div className="min-h-screen bg-gradient-to-b from-black via-[#73aeb7] to-[#652a37] text-white font-sans flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-                <p className="text-xl text-red-400">Error: {error}</p>
+                <p className="text-xl text-red-400">{error}</p>
             </div>
         );
     }
 
-    if (!resource) {
+    if (!item) {
         return (
             <div className="min-h-screen bg-gradient-to-b from-black via-[#73aeb7] to-[#652a37] text-white font-sans flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-                <p className="text-xl">Resource not found or loading...</p>
+                <p className="text-xl">Item not found.</p>
             </div>
         );
     }
 
-    // Determine if item is available for borrowing
-    const isAvailableForBorrow = resource.availability_status === 'Available';
+    const isOwner = currentUser && item.owner_id && currentUser.id === item.owner_id;
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-black via-[#73aeb7] to-[#652a37] text-white font-sans py-16 px-6 md:px-20">
-            <div className="max-w-4xl mx-auto bg-white p-8 rounded-lg shadow-xl text-gray-900">
-                <h2 className="text-3xl font-bold text-pink-700 mb-8 text-center">{resource.name}</h2>
+            <div className="max-w-4xl mx-auto bg-black bg-opacity-70 p-10 rounded-lg shadow-2xl border border-pink-700">
+                <h2 className="text-3xl font-extrabold text-white text-center mb-8">
+                    {item.name}
+                </h2>
 
-                <div className="flex flex-col md:flex-row gap-8 items-center md:items-start">
-                    <div className="md:w-1/2 flex-shrink-0">
-                        <img
-                            src={`https://placehold.co/500x350/e0e0e0/555555?text=${resource.name}`}
-                            alt={resource.name}
-                            className="w-full h-auto rounded-lg shadow-lg object-cover max-h-96"
-                        />
-                    </div>
-
-                    <div className="md:w-1/2 flex flex-col justify-between">
-                        <div>
-                            <h3 className="text-xl font-semibold mb-2">Description:</h3>
-                            <p className="text-lg text-gray-700 mb-4 leading-relaxed">{resource.description}</p>
-                            
-                            <div className="space-y-3 mb-6">
-                                <p className="text-gray-800 text-lg">
-                                    <strong className="text-pink-600">Available from:</strong> {resource.owner_username}
-                                </p>
-                                <p className="text-gray-800 text-lg">
-                                    <strong className="text-pink-600">Category:</strong> {resource.category}
-                                </p>
-                                <p className="text-gray-800 text-lg">
-                                    <strong className="text-pink-600">Location:</strong> {resource.location}
-                                </p>
-                                <p className="text-gray-800 text-lg">
-                                    <strong className="text-pink-600">Status:</strong> {resource.availability_status}
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                    <strong>Posted On:</strong> {new Date(resource.posted_at).toLocaleDateString()}
-                                </p>
+                <div className="flex flex-col md:flex-row gap-8 mb-8">
+                    <div className="md:w-1/2">
+                        {item.image_url ? (
+                            <img
+                                src={item.image_url}
+                                alt={item.name}
+                                className="w-full h-auto object-cover rounded-lg shadow-md"
+                                onError={(e) => { e.target.onerror = null; e.target.src = "https://placehold.co/400x300/4F46E5/FFFFFF?text=No+Image"; }} 
+                            />
+                        ) : (
+                            <div className="w-full h-64 bg-gray-700 rounded-lg flex items-center justify-center text-gray-400 text-lg">
+                                No Image Available
                             </div>
-                        </div>
+                        )}
+                    </div>
+                    <div className="md:w-1/2 space-y-4">
+                        <p className="text-lg">
+                            <strong className="text-pink-300">Category:</strong> {item.category}
+                        </p>
+                        <p className="text-lg">
+                            <strong className="text-pink-300">Description:</strong> {item.description}
+                        </p>
+                        <p className="text-lg">
+                            <strong className="text-pink-300">Location:</strong> {item.location}
+                        </p>
+                        <p className="text-lg">
+                            <strong className="text-pink-300">Availability:</strong>{' '}
+                            <span className={`font-semibold ${
+                                item.availability_status?.toLowerCase() === 'available' ? 'text-green-400' : 
+                                item.availability_status?.toLowerCase() === 'reserved' ? 'text-yellow-400' :
+                                item.availability_status?.toLowerCase() === 'borrowed' ? 'text-blue-400' :
+                                'text-gray-400'
+                            }`}>
+                                {item.availability_status || 'Unknown Status'} 
+                            </span>
+                        </p>
+                        <p className="text-lg">
+                            <strong className="text-pink-300">Posted by:</strong> {item.owner_username}
+                        </p>
+                        <p className="text-lg">
+                            <strong className="text-pink-300">Posted on:</strong> {new Date(item.posted_at).toLocaleDateString()}
+                        </p>
+
+                        {/* Conditional "Request to Borrow" button */}
+                        {isLoggedIn && !isOwner && item.availability_status === 'Available' && (
+                            <button
+                                onClick={() => setIsBorrowModalOpen(true)}
+                                className="w-full py-3 px-6 bg-pink-600 text-white rounded-md font-semibold text-lg hover:bg-pink-700 transition-colors shadow-md"
+                            >
+                                Request to Borrow
+                            </button>
+                        )}
+                        {/* Conditional "Leave a Review" button */}
+                        {isLoggedIn && !isOwner && (canReview || hasExistingReview) && ( 
+                            <button
+                                onClick={() => setIsReviewModalOpen(true)}
+                                className="w-full mt-4 py-3 px-6 bg-blue-600 text-white rounded-md font-semibold text-lg hover:bg-blue-700 transition-colors shadow-md"
+                                disabled={hasExistingReview} 
+                            >
+                                {hasExistingReview ? 'Review Already Submitted' : 'Leave a Review'}
+                            </button>
+                        )}
+                         {/* Message if not eligible to review */}
+                         {isLoggedIn && !isOwner && !canReview && !hasExistingReview && (
+                            <p className="text-center text-gray-400 mt-4 text-sm">
+                                You can leave a review after successfully completing a borrow for this item.
+                            </p>
+                         )}
                     </div>
                 </div>
-            </div>
 
-            <div className="max-w-4xl mx-auto mt-8">
-                {/* Borrow Button */}
-                <button
-                    onClick={() => {
-                        // Prevent any action if it's the owner or not available
-                        if (isCurrentUserOwner) { // Use the dedicated state variable
-                            setMessageBox({ show: true, message: "You cannot borrow your own item.", type: 'info' });
-                            return; 
-                        }
-                        if (!currentUser) {
-                            setMessageBox({ show: true, message: "Please log in to borrow this item.", type: 'info' });
-                            return;
-                        }
-                        if (!isAvailableForBorrow) {
-                            setMessageBox({ show: true, message: `This item is currently ${resource.availability_status.toLowerCase()} and cannot be borrowed.`, type: 'info' });
-                            return;
-                        }
-                        // If all checks pass, show the form
-                        setShowBorrowForm(true);
-                    }}
-                    // Disable if user is owner OR if item is not available for borrow
-                    disabled={isCurrentUserOwner || !isAvailableForBorrow} // Use the dedicated state variable
-                    className={`w-full py-3 px-6 rounded-md font-semibold text-xl transition-colors duration-200 ${
-                        isCurrentUserOwner || !isAvailableForBorrow // Use the dedicated state variable
-                            ? 'bg-gray-500 cursor-not-allowed'
-                            : 'bg-pink-600 hover:bg-pink-700 text-white'
-                    }`}
-                    title={isCurrentUserOwner ? "You cannot borrow your own item" : !isAvailableForBorrow ? `Item is ${resource.availability_status.toLowerCase()}` : "Request to Borrow"} // Use the dedicated state variable
-                >
-                    {isCurrentUserOwner ? "OWN ITEM" : !isAvailableForBorrow ? `STATUS: ${resource.availability_status.toUpperCase()}` : "BORROW NOW"} {/* Use the dedicated state variable */}
-                </button>
-            </div>
-
-            {/* Borrow Request Form Modal */}
-            {showBorrowForm && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white p-5 rounded-lg shadow-xl relative w-[450px] max-h-[90vh] overflow-y-auto text-gray-900">
-                        <button
-                            onClick={() => setShowBorrowForm(false)}
-                            className="absolute top-3 right-3 text-gray-600 hover:text-gray-900 text-2xl font-bold"
-                            aria-label="Close form"
-                        >
-                            &times;
-                        </button>
-
-                        <form onSubmit={handleSubmitBorrowRequest} className="mt-4 space-y-4">
-                            <h4 className="text-xl font-bold text-gray-800 mb-4 text-center">Borrowing Request for {resource.name}</h4>
-
-                            <div>
-                                <label htmlFor="pickupDate" className="block text-sm font-medium text-gray-700 mb-1">
-                                    Pickup Date:
-                                </label>
-                                <input
-                                    type="date"
-                                    id="pickupDate"
-                                    name="pickupDate"
-                                    value={pickupDate}
-                                    onChange={(e) => setPickupDate(e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-pink-500 focus:border-pink-500 sm:text-sm text-gray-900 bg-white"
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label htmlFor="returnDate" className="block text-sm font-medium text-gray-700 mb-1">
-                                    Return Date:
-                                </label>
-                                <input
-                                    type="date"
-                                    id="returnDate"
-                                    name="returnDate"
-                                    value={returnDate}
-                                    onChange={(e) => setReturnDate(e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-pink-500 focus:border-pink-500 sm:text-sm text-gray-900 bg-white"
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label htmlFor="pickupMethod" className="block text-sm font-medium text-gray-700 mb-1">
-                                    Pickup Method:
-                                </label>
-                                <select
-                                    id="pickupMethod"
-                                    name="pickupMethod"
-                                    value={pickupMethod}
-                                    onChange={(e) => setPickupMethod(e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-pink-500 focus:border-pink-500 sm:text-sm text-gray-900 bg-white"
-                                    required
-                                >
-                                    <option value="">Select method</option>
-                                    <option value="pickup">Owner Pickup</option>
-                                    <option value="dropoff">Drop-off by Owner</option>
-                                    <option value="public_meetup">Public Meetup</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label htmlFor="messageToOwner" className="block text-sm font-medium text-gray-700 mb-1">
-                                    Message to Owner:
-                                </label>
-                                <textarea
-                                    id="messageToOwner"
-                                    name="messageToOwner"
-                                    rows="3"
-                                    value={messageToOwner}
-                                    onChange={(e) => setMessageToOwner(e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-pink-500 focus:border-pink-500 sm:text-sm text-gray-900 bg-white"
-                                    placeholder="e.g., When would be a good time to pick up? I need it for a project next weekend."
-                                ></textarea>
-                            </div>
-
-                            <div>
-                                <label htmlFor="borrowLocation" className="block text-sm font-medium text-gray-700 mb-1">
-                                    Desired Pickup Location:
-                                </label>
-                                <input
-                                    type="text"
-                                    id="borrowLocation"
-                                    name="borrowLocation"
-                                    value={borrowLocation}
-                                    onChange={(e) => setBorrowLocation(e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-pink-500 focus:border-pink-500 sm:text-sm text-gray-900 bg-white"
-                                    placeholder="e.g., Near ABC Supermarket"
-                                    required
-                                />
-                            </div>
-
-                            <button
-                                type="submit"
-                                disabled={requestSending}
-                                className="w-full bg-pink-600 text-white py-3 px-6 rounded-md font-semibold text-lg hover:bg-pink-700 transition-colors duration-200"
-                            >
-                                {requestSending ? 'Sending Request...' : 'Submit Borrow Request'}
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => setShowBorrowForm(false)}
-                                className="w-full bg-gray-400 text-white py-2 px-4 rounded-md font-semibold text-md hover:bg-gray-500 transition-colors duration-200 mt-2"
-                            >
-                                Cancel
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {/* Reviews Section */}
-            <div className="max-w-4xl mx-auto mt-12 bg-white p-8 rounded-lg shadow-xl text-gray-900">
-                <h3 className="text-2xl font-bold text-pink-700 mb-6 border-b pb-3">Reviews</h3>
-
-                {reviewsLoading && <p className="text-center text-gray-700">Loading reviews...</p>}
-                {reviewsError && <p className="text-center text-red-500">Error loading reviews: {reviewsError}</p>}
-
-                {reviews.length === 0 && !reviewsLoading && (
-                    <p className="text-center text-gray-600">No reviews yet for this item.</p>
-                )}
-
-                {/* Review Submission Button (Conditionally Rendered) */}
-                {/* Show if user is logged in, NOT the owner, AND eligible to review a completed request */}
-                {currentUser && !isCurrentUserOwner && eligibleRequestForReview && ( // Use isCurrentUserOwner here
-                    <div className="my-6 text-center">
-                        <button
-                            onClick={() => setShowReviewForm(true)}
-                            className="bg-blue-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-blue-700 transition-colors duration-200"
-                        >
-                            Write a Review
-                        </button>
-                    </div>
-                )}
-
-                {/* Review List */}
-                {reviews.length > 0 && (
-                    <div className="space-y-6 mt-6">
-                        {reviews.map((review) => (
-                            <div key={review.review_id} className="border-b pb-4 last:border-b-0">
-                                <div className="flex items-center mb-2">
-                                    <StarRating rating={review.rating} editable={false} />
-                                    <span className="ml-3 text-lg font-semibold text-gray-800">{review.reviewer_username}</span>
+                {/* Reviews Section */}
+                <div className="mt-12">
+                    <h3 className="text-2xl font-bold text-white mb-6 text-center">Reviews</h3>
+                    {reviews.length === 0 ? (
+                        <p className="text-gray-400 text-center">No reviews yet for this item.</p>
+                    ) : (
+                        <div className="space-y-6">
+                            {reviews.map((review) => (
+                                <div key={review.review_id} className="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700">
+                                    <div className="flex items-center mb-2">
+                                        <div className="text-yellow-400 flex items-center">
+                                            {[...Array(review.rating)].map((_, i) => (
+                                                <svg key={i} className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.683-1.532 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.777.565-1.832-.197-1.532-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.462a1 1 0 00.95-.69l1.07-3.292z"></path>
+                                                </svg>
+                                            ))}
+                                            {[...Array(5 - review.rating)].map((_, i) => (
+                                                <svg key={i + review.rating} className="w-5 h-5 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.683-1.532 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.777.565-1.832-.197-1.532-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.462a1 1 0 00.95-.69l1.07-3.292z"></path>
+                                                </svg>
+                                            ))}
+                                        </div>
+                                        <p className="ml-3 text-gray-300 font-semibold">{review.reviewer_username || 'Anonymous User'}</p>
+                                    </div>
+                                    <p className="text-gray-200 text-base mb-2">{review.comment}</p>
+                                    <p className="text-gray-500 text-sm">
+                                        Reviewed on: {new Date(review.created_at).toLocaleDateString()}
+                                    </p>
                                 </div>
-                                <p className="text-gray-700 leading-relaxed mb-2">{review.comment}</p>
-                                <p className="text-sm text-gray-500">
-                                    Reviewed on: {new Date(review.created_at).toLocaleDateString()}
-                                </p>
-                            </div>
-                        ))}
-                    </div>
-                )}
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
 
-            {/* Review Submission Form Modal */}
-            {showReviewForm && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white p-5 rounded-lg shadow-xl relative w-[450px] max-h-[90vh] overflow-y-auto text-gray-900">
-                        <button
-                            onClick={() => setShowReviewForm(false)}
-                            className="absolute top-3 right-3 text-gray-600 hover:text-gray-900 text-2xl font-bold"
-                            aria-label="Close review form"
-                        >
-                            &times;
-                        </button>
-
-                        <form onSubmit={handleSubmitReview} className="mt-4 space-y-4">
-                            <h4 className="text-xl font-bold text-gray-800 mb-4 text-center">Submit Your Review for {resource.name}</h4>
-                            
-                            <div className="text-center">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Your Rating:</label>
-                                <StarRating rating={reviewRating} setRating={setReviewRating} editable={true} />
-                            </div>
-
-                            <div>
-                                <label htmlFor="reviewComment" className="block text-sm font-medium text-gray-700 mb-1">
-                                    Your Comment:
-                                </label>
-                                <textarea
-                                    id="reviewComment"
-                                    name="reviewComment"
-                                    rows="4"
-                                    value={reviewComment}
-                                    onChange={(e) => setReviewComment(e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 bg-white"
-                                    placeholder="Share your experience with this item..."
-                                ></textarea>
-                            </div>
-
-                            <button
-                                type="submit"
-                                disabled={reviewSubmitting}
-                                className="w-full bg-blue-600 text-white py-3 px-6 rounded-md font-semibold text-lg hover:bg-blue-700 transition-colors duration-200"
-                            >
-                                {reviewSubmitting ? 'Submitting...' : 'Submit Review'}
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => setShowReviewForm(false)}
-                                className="w-full bg-gray-400 text-white py-2 px-4 rounded-md font-semibold text-md hover:bg-gray-500 transition-colors duration-200 mt-2"
-                            >
-                                Cancel
-                            </button>
-                        </form>
-                    </div>
-                </div>
+            {/* Review Modal */}
+            {isReviewModalOpen && item && currentUser && (
+                <ReviewModal
+                    resource={item}
+                    onSaveReview={handleSaveReview}
+                    onClose={() => setIsReviewModalOpen(false)}
+                    hasExistingReview={hasExistingReview}
+                    relatedCompletedRequestId={relatedCompletedRequestId}
+                />
             )}
 
-            {/* Message Box */}
+            {/* Borrow Request Modal */}
+            {isBorrowModalOpen && item && currentUser && (
+                <BorrowRequestModal
+                    resource={item}
+                    onClose={() => setIsBorrowModalOpen(false)}
+                    onSubmitRequest={handleBorrowRequestSubmit}
+                />
+            )}
+
+            {/* Message Box for Alerts */}
             {messageBox.show && (
                 <MessageBox
                     message={messageBox.message}
