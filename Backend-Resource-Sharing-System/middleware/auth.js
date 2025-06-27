@@ -1,4 +1,7 @@
-const jwt = require('jsonwebtoken');
+// backend/middleware/auth.js
+
+const jwt = require('jsonwebtoken'); // Ensure jsonwebtoken is imported
+require('dotenv').config(); // Load environment variables for JWT_SECRET
 
 function protect(req, res, next) {
     // Get token from header
@@ -11,13 +14,20 @@ function protect(req, res, next) {
 
     try {
         // Verify token
+        // The JWT payload will have 'user_id' (snake_case) as set in server.js
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         
-        // Attach user from token payload to the request object
+        // Attach decoded payload to req.user.
+        // req.user will now directly be the 'decoded' object, which has 'user_id'
         req.user = decoded; 
+        
+        // Debugging logs - you can remove these once everything works
+        console.log('Decoded JWT Payload (req.user):', req.user);
+        // Correctly access 'user_id' (snake_case) from the decoded payload
+        console.log('User ID from Token (req.user.user_id):', req.user.user_id); 
+        
         next(); // Proceed to the next middleware/route handler
     } catch (err) {
-        // --- CHANGE: Handle token expiration or invalid token explicitly ---
         console.error('Token verification failed:', err.message);
         if (err.name === 'TokenExpiredError') {
             return res.status(401).json({ msg: 'Token expired' });
