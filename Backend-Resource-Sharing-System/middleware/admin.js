@@ -1,10 +1,17 @@
-// sharenet-backend/middleware/admin.js
-function admin(req, res, next) {
-    // req.user is set by the 'protect' middleware (which must run before this)
-    if (!req.user || req.user.role !== 'admin') {
-        return res.status(403).json({ msg: 'Access denied: Not an administrator' });
+// backend/middleware/admin.js
+
+function authorizeAdmin(req, res, next) {
+    // Check if user is authenticated (protect middleware should have run before this)
+    if (!req.user || !req.user.user_id) {
+        return res.status(401).json({ msg: 'Not authorized, no token or user info' });
     }
-    next(); // If user is admin, proceed
+
+    // Check if user has 'admin' role
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ msg: 'Forbidden: Admin access required' });
+    }
+
+    next(); // User is an admin, proceed
 }
 
-module.exports = admin;
+module.exports = authorizeAdmin;

@@ -1,53 +1,31 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 
 function Layout({ children }) {
-    const { currentUser, logout } = useAuth();
+    // Destructure unreadNotificationsCount and refreshUnreadNotificationsCount from useAuth
+    const { currentUser, logout, unreadNotificationsCount, refreshUnreadNotificationsCount } = useAuth();
     const location = useLocation();
-    const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
 
-    const getAuthHeaders = useCallback(() => {
-        const token = localStorage.getItem('token');
-        return {
-            'Content-Type': 'application/json',
-            'x-auth-token': token,
-        };
-    }, []);
-
-    const fetchUnreadNotificationsCount = useCallback(async () => {
-        if (!currentUser) {
-            setUnreadNotificationsCount(0);
-            return;
-        }
-        try {
-            const response = await fetch('http://localhost:5000/api/notifications', {
-                headers: getAuthHeaders(),
-            });
-            if (response.ok) {
-                const data = await response.json();
-                const unreadCount = data.filter(n => !n.is_read).length;
-                setUnreadNotificationsCount(unreadCount);
-            } else {
-                console.error("Failed to fetch unread notifications count.");
-                setUnreadNotificationsCount(0); // Reset count on error
-            }
-        } catch (error) {
-            console.error("Network error fetching unread notifications count:", error);
-            setUnreadNotificationsCount(0); // Reset count on network error
-        }
-    }, [currentUser, getAuthHeaders]);
-
+    // Use a useEffect to refresh notifications if currentUser changes (e.g., login/logout)
     useEffect(() => {
-        // Fetch count on component mount and when currentUser changes
-        fetchUnreadNotificationsCount();
+        // This effect will trigger the fetch in AuthContext whenever currentUser changes.
+        if (currentUser) {
+            refreshUnreadNotificationsCount(currentUser); // Pass currentUser if refresh func needs it for auth
+        }
+        
+        // Interval for periodic refresh of the notification badge in the navbar
+        const intervalId = setInterval(() => {
+            if (currentUser) { // Only refresh if user is logged in
+                refreshUnreadNotificationsCount(currentUser);
+            }
+        }, 30000); // Refresh every 30 seconds
 
-        // Set up an interval to refresh notifications every 30 seconds (adjust as needed)
-        const intervalId = setInterval(fetchUnreadNotificationsCount, 30000); 
-
-        // Clear interval on component unmount
+        // Cleanup function to clear the interval when the component unmounts
         return () => clearInterval(intervalId);
-    }, [fetchUnreadNotificationsCount]);
+
+    }, [currentUser, refreshUnreadNotificationsCount]); // Depend on currentUser and the refresh function
+
 
     return (
         <div className="min-h-screen flex flex-col">
@@ -80,7 +58,7 @@ function Layout({ children }) {
                                 >
                                     List Item
                                 </Link>
-                                {/* Swapped position: Notifications now comes before Profile */}
+                                {/* Notifications link now uses unreadNotificationsCount from AuthContext */}
                                 <Link
                                     to="/notifications"
                                     className={`relative hover:text-pink-400 transition-colors ${location.pathname === '/notifications' ? 'text-pink-400' : ''}`}
@@ -107,6 +85,7 @@ function Layout({ children }) {
                                         Admin
                                     </Link>
                                 )}
+                                {/* REMOVED LOGOUT BUTTON HERE, IT REMAINS ON PROFILE PAGE */}
                             </>
                         ) : (
                             <>

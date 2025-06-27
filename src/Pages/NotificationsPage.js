@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../AuthContext';
+import { useAuth } from '../AuthContext'; // Import useAuth to access shared state/functions
 import { useNavigate } from 'react-router-dom';
 
 // Custom Message Box Component (same as used in ItemDetailPage and ProfilePage)
@@ -40,7 +40,8 @@ const MessageBox = ({ message, type, onClose }) => {
 };
 
 function NotificationsPage() {
-    const { currentUser, logout } = useAuth();
+    // Destructure `refreshUnreadNotificationsCount` from useAuth
+    const { currentUser, logout, refreshUnreadNotificationsCount } = useAuth();
     const navigate = useNavigate();
 
     const [notifications, setNotifications] = useState([]);
@@ -116,7 +117,7 @@ function NotificationsPage() {
 
             const data = await response.json();
             if (response.ok) {
-                // Update the specific notification's is_read status in the state
+                // Update the specific notification's is_read status in the local state
                 setNotifications(prevNotifications =>
                     prevNotifications.map(notification =>
                         notification.notification_id === notificationId
@@ -124,8 +125,10 @@ function NotificationsPage() {
                             : notification
                     )
                 );
-                // No need for a message box for simple read actions, but uncomment if desired
-                // setMessageBox({ show: true, message: data.msg, type: 'success' });
+                // CRITICAL: Call the function from AuthContext to refresh the global unread count
+                if (refreshUnreadNotificationsCount) {
+                    refreshUnreadNotificationsCount(); 
+                }
             } else {
                 setMessageBox({ show: true, message: `Failed to mark notification as read: ${data.msg || 'Unknown error'}`, type: 'error' });
             }
@@ -133,7 +136,7 @@ function NotificationsPage() {
             console.error("Error marking notification as read:", err);
             setMessageBox({ show: true, message: 'An error occurred while marking notification as read.', type: 'error' });
         }
-    }, [getAuthHeaders]);
+    }, [getAuthHeaders, refreshUnreadNotificationsCount]); // Add refreshUnreadNotificationsCount to deps
 
     const unreadNotificationsCount = notifications.filter(n => !n.is_read).length;
 
