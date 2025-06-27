@@ -118,7 +118,7 @@ module.exports = (pool) => {
                     res.category as resource_category,
                     res.location as resource_location,
                     res.availability_status as current_resource_status,
-                    r.requester_id,
+                    r.requester_id, -- Ensure requester_id is selected
                     u.username as requester_username,
                     u.email as requester_email,
                     u.phone_number as requester_phone_number,
@@ -162,6 +162,7 @@ module.exports = (pool) => {
                     res.location as resource_location,
                     res.availability_status as current_resource_status,
                     r.owner_id,
+                    r.requester_id, -- Ensure requester_id is selected here
                     u.username as owner_username,
                     u.email as owner_email,
                     u.phone_number as owner_phone_number,
@@ -182,6 +183,8 @@ module.exports = (pool) => {
                    ORDER BY r.requested_at DESC`,
                 [requesterId]
             );
+            // DEBUG: Log the full array of sent requests being sent to the frontend
+            console.log("BACKEND_DEBUG: Sent requests for user", requesterId, ":", sentRequests.rows); 
             res.json(sentRequests.rows);
         } catch (err) {
             console.error('Get Sent Requests Error:', err.message);
@@ -417,8 +420,6 @@ module.exports = (pool) => {
             if (client) client.release();
         }
     });
-
-    // Removed review routes that are now in reviewRoutes.js
 
     return router;
 };

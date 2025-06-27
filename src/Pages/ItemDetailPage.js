@@ -53,13 +53,6 @@ const ReviewModal = ({ resource, onSaveReview, onClose, hasExistingReview, relat
         onSaveReview({ relatedRequestId: relatedCompletedRequestId, rating, comment });
     };
 
-    // DEBUG: Log when ReviewModal is rendered
-    useEffect(() => {
-        console.log("DEBUG: ReviewModal is being rendered.");
-        console.log("DEBUG: ReviewModal props - hasExistingReview:", hasExistingReview, " relatedCompletedRequestId:", relatedCompletedRequestId);
-    }, [hasExistingReview, relatedCompletedRequestId]);
-
-
     return (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 overflow-y-auto">
             <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full relative my-8 text-gray-900">
@@ -101,8 +94,7 @@ const ReviewModal = ({ resource, onSaveReview, onClose, hasExistingReview, relat
                                 value={comment}
                                 onChange={(e) => setComment(e.target.value)}
                                 rows="4"
-                                // Removed explicit styling from here
-                                className="block w-full text-gray-900 bg-gray-100" 
+                                className="block w-full" // Minimal styling
                                 placeholder="Share your experience..."
                             ></textarea>
                         </div>
@@ -118,7 +110,7 @@ const ReviewModal = ({ resource, onSaveReview, onClose, hasExistingReview, relat
 };
 
 
-// NEW: Borrow Request Modal
+// Borrow Request Modal
 const BorrowRequestModal = ({ resource, onClose, onSubmitRequest }) => {
     const [pickupDate, setPickupDate] = useState('');
     const [returnDate, setReturnDate] = useState('');
@@ -146,7 +138,6 @@ const BorrowRequestModal = ({ resource, onClose, onSubmitRequest }) => {
             messageToOwner,
             borrowLocation,
         });
-        // onClose() will be called by onSubmitRequest's success handler
     };
 
     return (
@@ -164,20 +155,17 @@ const BorrowRequestModal = ({ resource, onClose, onSubmitRequest }) => {
                     <div>
                         <label htmlFor="pickupDate" className="block text-gray-700 text-sm font-medium mb-1">Pickup Date:</label>
                         <input type="date" id="pickupDate" name="pickupDate" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} required
-                            // Removed explicit styling from here
-                            className="block w-full text-gray-900 bg-gray-100" />
+                            className="block w-full" /> 
                     </div>
                     <div>
                         <label htmlFor="returnDate" className="block text-gray-700 text-sm font-medium mb-1">Return Date:</label>
                         <input type="date" id="returnDate" name="returnDate" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} required
-                            // Removed explicit styling from here
-                            className="block w-full text-gray-900 bg-gray-100" />
+                            className="block w-full" /> 
                     </div>
                     <div>
                         <label htmlFor="pickupMethod" className="block text-gray-700 text-sm font-medium mb-1">Pickup Method:</label>
                         <select id="pickupMethod" name="pickupMethod" value={pickupMethod} onChange={(e) => setPickupMethod(e.target.value)} required
-                            // Removed explicit styling from here
-                            className="block w-full text-gray-900 bg-gray-100">
+                            className="block w-full bg-white" > 
                             <option value="Meetup">Meetup</option>
                             <option value="Delivery">Delivery</option>
                         </select>
@@ -185,16 +173,14 @@ const BorrowRequestModal = ({ resource, onClose, onSubmitRequest }) => {
                     <div>
                         <label htmlFor="borrowLocation" className="block text-gray-700 text-sm font-medium mb-1">Borrow Location:</label>
                         <input type="text" id="borrowLocation" name="borrowLocation" value={borrowLocation} onChange={(e) => setBorrowLocation(e.target.value)} required
-                            // Removed explicit styling from here
-                            className="block w-full text-gray-900 bg-gray-100"
-                            placeholder="e.g., Nairobi CBD, Owner's Address" />
+                            className="block w-full" 
+                            placeholder="e.g., Nairobi CBD, Owner's Address" /> 
                     </div>
                     <div>
                         <label htmlFor="messageToOwner" className="block text-gray-700 text-sm font-medium mb-1">Message to Owner (Optional):</label>
                         <textarea id="messageToOwner" name="messageToOwner" value={messageToOwner} onChange={(e) => setMessageToOwner(e.target.value)}
-                            rows="3" // Removed explicit styling from here
-                            className="block w-full text-gray-900 bg-gray-100"
-                            placeholder="Any specific instructions or questions?"></textarea>
+                            rows="3" className="block w-full"
+                            placeholder="Any specific instructions or questions?"></textarea> 
                     </div>
                     <div className="flex justify-end space-x-4 mt-6">
                         <button type="button" onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100">Cancel</button>
@@ -223,7 +209,6 @@ function ItemDetailPage() {
     const [relatedCompletedRequestId, setRelatedCompletedRequestId] = useState(null); 
     const [hasExistingReview, setHasExistingReview] = useState(false); 
 
-    // NEW: State for Borrow Request Modal
     const [isBorrowModalOpen, setIsBorrowModalOpen] = useState(false);
 
     const getAuthHeaders = useCallback(() => {
@@ -270,33 +255,50 @@ function ItemDetailPage() {
         }
     }, [id]);
 
-    // Check if the current user is eligible to leave a review for this item
     const checkReviewEligibility = useCallback(async () => {
         if (loadingAuth || !isLoggedIn || !currentUser || !id) { 
+            console.log("DEBUG_REVIEW: Skipping eligibility check. Auth not ready or not logged in.");
             setCanReview(false);
             setHasExistingReview(false);
             setRelatedCompletedRequestId(null);
             return;
         }
+        console.log("DEBUG_REVIEW: Starting eligibility check for user:", currentUser.id, " item:", id);
 
         try {
             const response = await fetch(`http://localhost:5000/api/requests/sent`, {
                 headers: getAuthHeaders(),
             });
             const data = await response.json();
+            console.log("DEBUG_REVIEW: Response from /api/requests/sent (full data):", data); 
 
             if (!response.ok) {
-                console.error("Failed to fetch sent requests for review eligibility:", data.msg);
+                console.error("DEBUG_REVIEW: Failed to fetch sent requests for review eligibility:", data.msg);
                 setCanReview(false);
                 setHasExistingReview(false);
                 setRelatedCompletedRequestId(null);
                 return;
             }
 
+            debugger; // <--- Added debugger here for precise inspection
             // Find a completed request for this resource by the current user
             const completedRequest = data.find(
-                (req) => req.resource_id === id && req.requester_id === currentUser.id && req.status === 'Completed'
+                (req) => {
+                    const isResourceMatch = String(req.resource_id).trim() === String(id).trim();
+                    const isRequesterMatch = String(req.requester_id).trim() === String(currentUser.id).trim();
+                    const isStatusCompleted = req.status === 'Completed';
+
+                    console.log(`DEBUG_FIND: Checking request_id: ${req.request_id}`);
+                    console.log(`DEBUG_FIND:   Resource ID Match: ${isResourceMatch} (Req: '${String(req.resource_id).trim()}' vs Item: '${String(id).trim()}')`);
+                    console.log(`DEBUG_FIND:   Requester ID Match: ${isRequesterMatch} (Req: '${String(req.requester_id).trim()}' vs CurrentUser: '${String(currentUser.id).trim()}')`);
+                    console.log(`DEBUG_FIND:   Status Completed: ${isStatusCompleted} (Req: '${req.status}')`);
+                    console.log(`DEBUG_FIND:   Overall Match: ${isResourceMatch && isRequesterMatch && isStatusCompleted}`);
+                    
+                    return isResourceMatch && isRequesterMatch && isStatusCompleted;
+                }
             );
+            console.log("DEBUG_REVIEW: Found completed request (after filter):", completedRequest);
+
 
             if (completedRequest) {
                 // Check if a review already exists for this specific completed transaction
@@ -304,23 +306,27 @@ function ItemDetailPage() {
                     headers: getAuthHeaders(),
                 });
                 const existingReviewData = await existingReviewCheck.json();
+                console.log("DEBUG_REVIEW: Existing review check response:", existingReviewData);
 
                 if (existingReviewCheck.ok && existingReviewData.hasReview) {
+                    console.log("DEBUG_REVIEW: User has existing review for this completed request.");
                     setCanReview(false);
                     setHasExistingReview(true); 
                     setRelatedCompletedRequestId(completedRequest.request_id);
                 } else {
+                    console.log("DEBUG_REVIEW: User is eligible to review.");
                     setCanReview(true);
                     setHasExistingReview(false);
-                    setRelatedCompletedRequestId(null);
+                    setRelatedCompletedRequestId(completedRequest.request_id);
                 }
             } else {
+                console.log("DEBUG_REVIEW: No completed request found for this item by this user.");
                 setCanReview(false);
                 setHasExistingReview(false);
                 setRelatedCompletedRequestId(null);
             }
         } catch (err) {
-            console.error("Error checking review eligibility:", err);
+            console.error("DEBUG_REVIEW: Error checking review eligibility:", err);
             setCanReview(false);
             setHasExistingReview(false);
             setRelatedCompletedRequestId(null);
@@ -328,7 +334,6 @@ function ItemDetailPage() {
     }, [isLoggedIn, currentUser, id, getAuthHeaders, loadingAuth]);
 
 
-    // Handle review submission
     const handleSaveReview = async ({ relatedRequestId, rating, comment }) => {
         try {
             const response = await fetch('http://localhost:5000/api/reviews', {
@@ -353,7 +358,6 @@ function ItemDetailPage() {
         }
     };
 
-    // NEW: Handle Borrow Request Submission
     const handleBorrowRequestSubmit = async (requestData) => {
         try {
             const response = await fetch('http://localhost:5000/api/requests', {
@@ -369,8 +373,8 @@ function ItemDetailPage() {
             }
 
             setMessageBox({ show: true, message: data.msg, type: 'success' });
-            setIsBorrowModalOpen(false); // Close the modal
-            fetchItemDetails(); // Re-fetch item details to update availability status
+            setIsBorrowModalOpen(false); 
+            fetchItemDetails(); 
         } catch (err) {
             console.error("Error submitting borrow request:", err);
             setMessageBox({ show: true, message: 'An error occurred while submitting your borrow request.', type: 'error' });
@@ -383,39 +387,13 @@ function ItemDetailPage() {
         fetchReviews();
     }, [fetchItemDetails, fetchReviews]);
 
-    // Check eligibility whenever auth state or item changes
     useEffect(() => {
         if (!loadingAuth && item) { 
             checkReviewEligibility();
         }
     }, [loadingAuth, item, checkReviewEligibility]);
 
-
-    // Debugging logs for borrow button and review button conditions
-    useEffect(() => {
-        if (!loading && item && !loadingAuth) {
-            console.log("DEBUG: isLoggedIn (from AuthContext):", isLoggedIn);
-            console.log("DEBUG: currentUser (from AuthContext):", currentUser);
-            console.log("DEBUG: item.owner_id:", item.owner_id);
-            console.log("DEBUG: currentUser.id:", currentUser?.id); 
-            console.log("DEBUG: item.availability_status:", item.availability_status);
-            
-            const isOwnerCheck = currentUser && item.owner_id && currentUser.id === item.owner_id;
-            console.log("DEBUG: isOwner calculated:", isOwnerCheck);
-            console.log("DEBUG: item.availability_status === 'Available':", item.availability_status === 'Available');
-
-            const shouldShowBorrowButton = isLoggedIn && !isOwnerCheck && item.availability_status === 'Available';
-            console.log("DEBUG: Should show borrow button (all conditions met):", shouldShowBorrowButton);
-
-            console.log("DEBUG: canReview (eligibility):", canReview);
-            console.log("DEBUG: hasExistingReview:", hasExistingReview);
-            console.log("DEBUG: Should show review button:", isLoggedIn && !isOwnerCheck && (canReview || hasExistingReview));
-            console.log("DEBUG: isReviewModalOpen state:", isReviewModalOpen); 
-            console.log("DEBUG: isBorrowModalOpen state:", isBorrowModalOpen); 
-        }
-    }, [loading, item, currentUser, isLoggedIn, loadingAuth, canReview, hasExistingReview, isReviewModalOpen, isBorrowModalOpen]);
-
-
+    
     if (loading || loadingAuth) { 
         return (
             <div className="min-h-screen bg-gradient-to-b from-black via-[#73aeb7] to-[#652a37] text-white font-sans flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -440,7 +418,6 @@ function ItemDetailPage() {
         );
     }
 
-    // Determine if the current user is the owner of the item
     const isOwner = currentUser && item.owner_id && currentUser.id === item.owner_id;
 
     return (
@@ -496,10 +473,7 @@ function ItemDetailPage() {
                         {/* Conditional "Request to Borrow" button */}
                         {isLoggedIn && !isOwner && item.availability_status === 'Available' && (
                             <button
-                                onClick={() => {
-                                    console.log("DEBUG: 'Request to Borrow' button clicked. Setting isBorrowModalOpen to true.");
-                                    setIsBorrowModalOpen(true); // Open the borrow modal
-                                }}
+                                onClick={() => setIsBorrowModalOpen(true)}
                                 className="w-full py-3 px-6 bg-pink-600 text-white rounded-md font-semibold text-lg hover:bg-pink-700 transition-colors shadow-md"
                             >
                                 Request to Borrow
@@ -508,10 +482,7 @@ function ItemDetailPage() {
                         {/* Conditional "Leave a Review" button */}
                         {isLoggedIn && !isOwner && (canReview || hasExistingReview) && ( 
                             <button
-                                onClick={() => {
-                                    console.log("DEBUG: 'Leave a Review' button clicked. Setting isReviewModalOpen to true.");
-                                    setIsReviewModalOpen(true);
-                                }}
+                                onClick={() => setIsReviewModalOpen(true)}
                                 className="w-full mt-4 py-3 px-6 bg-blue-600 text-white rounded-md font-semibold text-lg hover:bg-blue-700 transition-colors shadow-md"
                                 disabled={hasExistingReview} 
                             >
@@ -563,29 +534,21 @@ function ItemDetailPage() {
             </div>
 
             {/* Review Modal */}
-            {console.log("DEBUG: Attempting to render ReviewModal. isReviewModalOpen:", isReviewModalOpen, " item:", !!item, " currentUser:", !!currentUser)}
             {isReviewModalOpen && item && currentUser && (
                 <ReviewModal
                     resource={item}
                     onSaveReview={handleSaveReview}
-                    onClose={() => {
-                        console.log("DEBUG: Closing ReviewModal. Setting isReviewModalOpen to false.");
-                        setIsReviewModalOpen(false);
-                    }}
+                    onClose={() => setIsReviewModalOpen(false)}
                     hasExistingReview={hasExistingReview}
                     relatedCompletedRequestId={relatedCompletedRequestId}
                 />
             )}
 
-            {/* NEW: Borrow Request Modal */}
-            {console.log("DEBUG: Attempting to render BorrowRequestModal. isBorrowModalOpen:", isBorrowModalOpen, " item:", !!item, " currentUser:", !!currentUser)}
+            {/* Borrow Request Modal */}
             {isBorrowModalOpen && item && currentUser && (
                 <BorrowRequestModal
                     resource={item}
-                    onClose={() => {
-                        console.log("DEBUG: Closing BorrowRequestModal. Setting isBorrowModalOpen to false.");
-                        setIsBorrowModalOpen(false);
-                    }}
+                    onClose={() => setIsBorrowModalOpen(false)}
                     onSubmitRequest={handleBorrowRequestSubmit}
                 />
             )}
