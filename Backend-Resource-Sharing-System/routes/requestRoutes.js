@@ -80,7 +80,7 @@ module.exports = (pool) => {
 
             await client.query(
                 `INSERT INTO Notifications (notification_id, user_id, related_request_id, message, type, created_at)
-                 VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)`, // Using related_request_id for Notifications DB
+                 VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)`, 
                 [uuidv4(), owner_id, newRequest.rows[0].request_id, `${requesterUsername} has requested to borrow your item: "${resourceName}"`, 'new_request']
             );
 
@@ -129,12 +129,14 @@ module.exports = (pool) => {
                     r.message_to_owner,
                     r.borrow_location,
                     r.status,
-                    r.requested_at
-                 FROM Requests r
-                 JOIN Resources res ON r.resource_id = res.resource_id
-                 JOIN Users u ON r.requester_id = u.user_id
-                 WHERE r.owner_id = $1
-                 ORDER BY r.requested_at DESC`,
+                    r.requested_at,
+                    t.transaction_id -- Include transaction_id to check if review is possible
+                   FROM Requests r
+                   JOIN Resources res ON r.resource_id = res.resource_id
+                   JOIN Users u ON r.requester_id = u.user_id
+                   LEFT JOIN Transactions t ON r.request_id = t.request_id
+                   WHERE r.owner_id = $1
+                   ORDER BY r.requested_at DESC`,
                 [ownerId]
             );
             res.json(receivedRequests.rows);
@@ -170,12 +172,14 @@ module.exports = (pool) => {
                     r.message_to_owner,
                     r.borrow_location,
                     r.status,
-                    r.requested_at
-                 FROM Requests r
-                 JOIN Resources res ON r.resource_id = res.resource_id
-                 JOIN Users u ON r.owner_id = u.user_id
-                 WHERE r.requester_id = $1
-                 ORDER BY r.requested_at DESC`,
+                    r.requested_at,
+                    t.transaction_id -- Include transaction_id
+                   FROM Requests r
+                   JOIN Resources res ON r.resource_id = res.resource_id
+                   JOIN Users u ON r.owner_id = u.user_id
+                   LEFT JOIN Transactions t ON r.request_id = t.request_id
+                   WHERE r.requester_id = $1
+                   ORDER BY r.requested_at DESC`,
                 [requesterId]
             );
             res.json(sentRequests.rows);
@@ -206,10 +210,11 @@ module.exports = (pool) => {
 
             // Get request details to verify ownership/requester status
             const requestDetails = await client.query(
-                `SELECT r.owner_id, r.requester_id, r.resource_id, r.status as current_status, res.name as resource_name
+                `SELECT r.owner_id, r.requester_id, r.resource_id, r.status as current_status, res.name as resource_name,
+                        r.pickup_date, r.return_date, r.pickup_method
                  FROM Requests r
                  JOIN Resources res ON r.resource_id = res.resource_id
-                 WHERE r.request_id = $1`,
+                 WHERE r.request_id = $1 FOR UPDATE`, // FOR UPDATE to lock row during transaction
                 [requestId]
             );
 
@@ -218,7 +223,8 @@ module.exports = (pool) => {
                 return res.status(404).json({ msg: 'Borrow request not found.' });
             }
 
-            const { owner_id, requester_id, resource_id, current_status, resource_name } = requestDetails.rows[0];
+            const { owner_id, requester_id, resource_id, current_status, resource_name,
+                    pickup_date, return_date, pickup_method } = requestDetails.rows[0];
 
             // Authorization logic based on desired status change
             let notificationMessage = '';
@@ -239,14 +245,23 @@ module.exports = (pool) => {
                     return res.status(403).json({ msg: 'Forbidden: Only the owner or an admin can accept this request.' });
                 }
                 if (current_status !== 'Pending') {
-                     await client.query('ROLLBACK');
-                     return res.status(400).json({ msg: 'Only pending requests can be accepted.' });
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ msg: 'Only pending requests can be accepted.' });
                 }
                 updatePermitted = true;
-                newResourceStatus = 'Reserved'; // Item remains Reserved
+                newResourceStatus = 'Reserved'; 
                 notificationMessage = `${username} has accepted your request for "${resource_name}"!`;
                 notificationType = 'request_accepted';
                 recipientId = requester_id;
+
+                // NEW: Create a transaction entry when request is accepted
+                const transaction_id = uuidv4();
+                await client.query(
+                    `INSERT INTO Transactions (transaction_id, request_id, borrower_id, lender_id, resource_id,
+                                            borrow_date, return_date_agreed, status, created_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, 'Active', CURRENT_TIMESTAMP)`,
+                    [transaction_id, requestId, requester_id, owner_id, resource_id, pickup_date, return_date]
+                );
 
                 // Immediately reject all other pending requests for this resource
                 const otherPendingRequests = await client.query(
@@ -265,7 +280,7 @@ module.exports = (pool) => {
                 for (const req of otherPendingRequests.rows) {
                     await client.query(
                         `INSERT INTO Notifications (notification_id, user_id, related_request_id, message, type, created_at)
-                         VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)`, // Using related_request_id for Notifications DB
+                         VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)`, 
                         [uuidv4(), req.requester_id, req.request_id, `Your request for "${resource_name}" has been rejected because another request for it was accepted.`, 'request_rejected']
                     );
                 }
@@ -275,9 +290,9 @@ module.exports = (pool) => {
                     await client.query('ROLLBACK');
                     return res.status(403).json({ msg: 'Forbidden: Only the owner or an admin can reject this request.' });
                 }
-                 if (current_status !== 'Pending') {
-                     await client.query('ROLLBACK');
-                     return res.status(400).json({ msg: 'Only pending requests can be rejected.' });
+                if (current_status !== 'Pending') {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ msg: 'Only pending requests can be rejected.' });
                 }
                 updatePermitted = true;
                 newResourceStatus = 'Available'; // Item becomes available again
@@ -292,11 +307,19 @@ module.exports = (pool) => {
                     return res.status(403).json({ msg: 'Forbidden: You do not have permission to cancel this request.' });
                 }
                 if (current_status === 'Completed' || current_status === 'Rejected') {
-                     await client.query('ROLLBACK');
-                     return res.status(400).json({ msg: `Cannot cancel a request that is already ${current_status}.` });
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ msg: `Cannot cancel a request that is already ${current_status}.` });
                 }
                 updatePermitted = true;
                 newResourceStatus = 'Available'; // Item becomes available again
+
+                // If a transaction exists, update its status to 'Canceled'
+                await client.query(
+                    `UPDATE Transactions SET status = 'Canceled', updated_at = CURRENT_TIMESTAMP
+                     WHERE request_id = $1`,
+                    [requestId]
+                );
+
                 if (userId === requester_id) { // Requester cancelled
                     notificationMessage = `${username} cancelled their request for your item: "${resource_name}".`;
                     notificationType = 'request_cancelled';
@@ -313,14 +336,35 @@ module.exports = (pool) => {
                     return res.status(403).json({ msg: 'Forbidden: Only the owner or an admin can mark this request as completed.' });
                 }
                 if (current_status !== 'Accepted') { // Only accepted requests can be completed
-                     await client.query('ROLLBACK');
-                     return res.status(400).json({ msg: 'Only accepted requests can be marked as completed.' });
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ msg: 'Only accepted requests can be marked as completed.' });
                 }
                 updatePermitted = true;
                 newResourceStatus = 'Available'; // Item is available again after completion
+
+                // NEW: Update transaction status to 'Completed' and set actual_return_date
+                const transactionUpdate = await client.query(
+                    `UPDATE Transactions SET status = 'Completed', actual_return_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                     WHERE request_id = $1
+                     RETURNING *`,
+                    [requestId]
+                );
+                
+                if (transactionUpdate.rows.length === 0) {
+                     await client.query('ROLLBACK');
+                     return res.status(404).json({ msg: 'Corresponding transaction not found for completion.' });
+                }
+
                 notificationMessage = `${username} has marked your borrow of "${resource_name}" as completed.`;
                 notificationType = 'borrow_completed';
                 recipientId = requester_id;
+                
+                // Also notify the owner that the request was completed
+                await client.query(
+                    `INSERT INTO Notifications (notification_id, user_id, related_request_id, message, type, created_at)
+                     VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)`,
+                    [uuidv4(), owner_id, requestId, `Request for your resource '${resource_name}' by ${req.user.username} has been marked as completed.`, 'resource_completed']
+                );
             }
 
             if (!updatePermitted) {
@@ -332,13 +376,13 @@ module.exports = (pool) => {
             const updatedRequest = await client.query(
                 `UPDATE Requests SET status = $1, updated_at = CURRENT_TIMESTAMP
                  WHERE request_id = $2
-                 RETURNING *`, // No need for owner_id/requester_id in WHERE clause, already authorized
+                 RETURNING *`, 
                 [status, requestId]
             );
 
             if (updatedRequest.rows.length === 0) {
                 await client.query('ROLLBACK');
-                return res.status(404).json({ msg: 'Request not found.' }); // Should not happen if authorization passed
+                return res.status(404).json({ msg: 'Request not found.' }); 
             }
 
             // Update resource availability status if applicable
@@ -354,7 +398,7 @@ module.exports = (pool) => {
             if (notificationMessage && recipientId) {
                 await client.query(
                     `INSERT INTO Notifications (notification_id, user_id, related_request_id, message, type, created_at)
-                     VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)`, // Using related_request_id for Notifications DB
+                     VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)`, 
                     [uuidv4(), recipientId, requestId, notificationMessage, notificationType]
                 );
             }
@@ -373,6 +417,8 @@ module.exports = (pool) => {
             if (client) client.release();
         }
     });
+
+    // Removed review routes that are now in reviewRoutes.js
 
     return router;
 };

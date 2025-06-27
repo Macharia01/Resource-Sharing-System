@@ -3,6 +3,7 @@
 const express = require('express');
 const protect = require('../middleware/auth'); // Import authentication middleware
 const authorizeAdmin = require('../middleware/admin'); // Import admin authorization middleware
+const { v4: uuidv4 } = require('uuid'); // Import uuid for notification IDs in admin updates
 
 // This function will be called from server.js and receive the pool
 module.exports = (pool) => {
@@ -17,7 +18,6 @@ module.exports = (pool) => {
             const totalUsers = await pool.query('SELECT COUNT(*) FROM Users');
             const totalResources = await pool.query('SELECT COUNT(*) FROM Resources');
             const pendingRequests = await pool.query('SELECT COUNT(*) FROM Requests WHERE status = $1', ['Pending']);
-            // const reportsCount = await pool.query('SELECT COUNT(*) FROM Feedback WHERE rating < 3'); // Uncomment if Feedback table exists
             const pendingReports = await pool.query('SELECT COUNT(*) FROM Reports WHERE status = $1', ['Pending']);
 
             res.json({
@@ -25,7 +25,6 @@ module.exports = (pool) => {
                 totalResourcesListed: parseInt(totalResources.rows[0].count),
                 pendingBorrowRequests: parseInt(pendingRequests.rows[0].count),
                 pendingUserReports: parseInt(pendingReports.rows[0].count),
-                // reportsCount: reportsCount.rows.length > 0 ? parseInt(reportsCount.rows[0].count) : 0, // Uncomment if Feedback exists
                 recentUserActivity: "Coming soon: detailed activity logs"
             });
 
@@ -61,13 +60,13 @@ module.exports = (pool) => {
                     req.pickup_date,
                     req.return_date,
                     req.status as request_status
-                 FROM Reports r
-                 JOIN Users rep_user ON r.reporter_id = rep_user.user_id
-                 JOIN Users reported_user ON r.reported_user_id = reported_user.user_id
-                 LEFT JOIN Resources res ON r.resource_id = res.resource_id
-                 LEFT JOIN Users res_admin ON r.resolved_by = res_admin.user_id
-                 LEFT JOIN Requests req ON r.request_id = req.request_id -- Using request_id for reports table
-                 ORDER BY r.created_at DESC`
+                   FROM Reports r
+                   JOIN Users rep_user ON r.reporter_id = rep_user.user_id
+                   JOIN Users reported_user ON r.reported_user_id = reported_user.user_id
+                   LEFT JOIN Resources res ON r.resource_id = res.resource_id
+                   LEFT JOIN Users res_admin ON r.resolved_by = res_admin.user_id
+                   LEFT JOIN Requests req ON r.request_id = req.request_id -- Using request_id for reports table
+                   ORDER BY r.created_at DESC`
             );
             res.json(reports.rows);
         } catch (err) {
@@ -77,8 +76,6 @@ module.exports = (pool) => {
     });
 
     // @route   PUT /api/admin/reports/:id/status
-    // @desc    Update the status of a report (for admin to deal with)
-    // @access  Private (Admin only)
     router.put('/reports/:id/status', protect, authorizeAdmin, async (req, res) => {
         const reportId = req.params.id;
         const { status } = req.body; // 'Pending', 'Reviewed', 'Dismissed', 'Action Taken'
@@ -176,8 +173,8 @@ module.exports = (pool) => {
                     address = $6,
                     role = $7,
                     updated_at = CURRENT_TIMESTAMP
-                 WHERE user_id = $8
-                 RETURNING user_id, first_name, last_name, email, phone_number, username, role, address`,
+                   WHERE user_id = $8
+                   RETURNING user_id, first_name, last_name, email, phone_number, username, role, address`,
                 [firstName, lastName, email, phoneNumber, username, address, role, userIdToUpdate]
             );
 
@@ -185,7 +182,20 @@ module.exports = (pool) => {
                 return res.status(404).json({ msg: 'User not found' });
             }
 
-            res.json({ msg: 'User updated successfully', user: updatedUser.rows[0] });
+            // Return camelCase for frontend consistency with signup/login
+            res.json({
+                msg: 'User updated successfully',
+                user: {
+                    id: updatedUser.rows[0].user_id,
+                    firstName: updatedUser.rows[0].first_name,
+                    lastName: updatedUser.rows[0].last_name,
+                    email: updatedUser.rows[0].email,
+                    phoneNumber: updatedUser.rows[0].phone_number,
+                    username: updatedUser.rows[0].username,
+                    role: updatedUser.rows[0].role,
+                    address: updatedUser.rows[0].address
+                }
+            });
 
         } catch (err) {
             console.error('Admin Update User Error:', err.message);
@@ -209,7 +219,7 @@ module.exports = (pool) => {
             const targetUserRole = targetUserRoleResult.rows[0]?.role;
 
             if (targetUserRole === 'admin' && adminCount <= 1) {
-                 return res.status(400).json({ msg: 'Cannot delete the last remaining admin account.' });
+                return res.status(400).json({ msg: 'Cannot delete the last remaining admin account.' });
             }
 
             const deleteResult = await pool.query('DELETE FROM Users WHERE user_id = $1 RETURNING user_id', [userIdToDelete]);
@@ -231,13 +241,12 @@ module.exports = (pool) => {
         try {
             const resources = await pool.query(
                 `SELECT r.resource_id, r.name, r.description, r.category, r.location, r.availability_status, r.posted_at, u.username as owner_username
-                 FROM Resources r
-                 JOIN Users u ON r.owner_id = u.user_id
-                 ORDER BY r.posted_at DESC`
+                   FROM Resources r
+                   JOIN Users u ON r.owner_id = u.user_id
+                   ORDER BY r.posted_at DESC`
             );
-            res.json(resources.rows);
-        }
-        catch (err) {
+            res.json(resources.rows); // Returns data in snake_case directly from DB
+        } catch (err) {
             console.error('Admin Get Resources Error:', err.message);
             res.status(500).send('Server Error fetching resources');
         }
@@ -264,8 +273,8 @@ module.exports = (pool) => {
                     location = $4,
                     availability_status = $5,
                     updated_at = CURRENT_TIMESTAMP
-                 WHERE resource_id = $6
-                 RETURNING resource_id, name, description, category, location, availability_status, posted_at`,
+                   WHERE resource_id = $6
+                   RETURNING resource_id, name, description, category, location, availability_status, posted_at`,
                 [name, description, category, location, availability_status, resourceIdToUpdate]
             );
 
@@ -297,6 +306,156 @@ module.exports = (pool) => {
         } catch (err) {
             console.error('Admin Delete Resource Error:', err.message);
             res.status(500).send('Server Error deleting resource');
+        }
+    });
+
+    // NEW: Request Management Routes
+    // @route   GET /api/admin/requests
+    // @desc    Get all requests (borrow/lend, including pending, approved, rejected)
+    // @access  Private (Admin only)
+    router.get('/requests', protect, authorizeAdmin, async (req, res) => {
+        try {
+            const requests = await pool.query(
+                `SELECT
+                    req.request_id,
+                    req.requester_id,
+                    req_user.username AS requester_username,
+                    req.resource_id,
+                    res.name AS resource_name,
+                    res.owner_id,
+                    owner_user.username AS owner_username,
+                    req.pickup_date,
+                    req.return_date,
+                    req.status,
+                    req.requested_at, -- CORRECTED: Use requested_at
+                    req.updated_at
+                FROM Requests req
+                JOIN Users req_user ON req.requester_id = req_user.user_id
+                JOIN Resources res ON req.resource_id = res.resource_id
+                JOIN Users owner_user ON res.owner_id = owner_user.user_id
+                ORDER BY req.requested_at DESC` // CORRECTED: Order by requested_at
+            );
+            res.json(requests.rows);
+        } catch (err) {
+            console.error('Admin Get Requests Error:', err.message);
+            res.status(500).json({ msg: 'Server Error fetching requests', error: err.message });
+        }
+    });
+
+    // @route   PUT /api/admin/requests/:id/status
+    // @desc    Update the status of a request (approve/reject/complete)
+    // @access  Private (Admin only)
+    router.put('/requests/:id/status', protect, authorizeAdmin, async (req, res) => {
+        const requestId = req.params.id;
+        const { status } = req.body; // Expected: 'Approved', 'Rejected', 'Completed'
+
+        if (!status || !['Approved', 'Rejected', 'Completed'].includes(status)) {
+            return res.status(400).json({ msg: 'Invalid request status provided. Must be Approved, Rejected, or Completed.' });
+        }
+
+        let client;
+        try {
+            client = await pool.connect();
+            await client.query('BEGIN'); // Start transaction
+
+            // Check if request exists and its current status
+            const requestCheck = await client.query('SELECT status, resource_id, requester_id, owner_id FROM Requests WHERE request_id = $1 FOR UPDATE', [requestId]);
+            if (requestCheck.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ msg: 'Request not found.' });
+            }
+
+            const currentRequest = requestCheck.rows[0];
+            const resourceId = currentRequest.resource_id;
+            const requesterId = currentRequest.requester_id;
+            const resourceOwnerId = currentRequest.owner_id; // Assuming owner_id is derived from resource
+
+            // Update request status
+            const updatedRequest = await client.query(
+                `UPDATE Requests SET status = $1, updated_at = CURRENT_TIMESTAMP
+                WHERE request_id = $2
+                RETURNING *`,
+                [status, requestId]
+            );
+
+            if (updatedRequest.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ msg: 'Request not found or not updated.' });
+            }
+
+            // Logic to update resource status or create notifications based on request status
+            if (status === 'Approved') {
+                // Set resource status to 'Reserved' if it was Available
+                await client.query(
+                    `UPDATE Resources SET availability_status = 'Reserved', updated_at = CURRENT_TIMESTAMP
+                    WHERE resource_id = $1 AND availability_status = 'Available'`,
+                    [resourceId]
+                );
+                // Notify requester (if not already handled by owner's actions)
+                // Note: resource_name is needed for notification message, but not in currentRequest object from DB query.
+                // We'll need to fetch it or ensure it's passed. For now, using a placeholder.
+                const resourceNameResult = await client.query('SELECT name FROM Resources WHERE resource_id = $1', [resourceId]);
+                const resourceName = resourceNameResult.rows[0]?.name || 'a resource';
+
+                await client.query(
+                    'INSERT INTO Notifications (notification_id, user_id, message, type, is_read, created_at) VALUES ($1, $2, $3, $4, FALSE, CURRENT_TIMESTAMP)',
+                    [uuidv4(), requesterId, `Your request for '${resourceName}' has been approved by admin!`, 'request_approved']
+                );
+            } else if (status === 'Rejected') {
+                const resourceNameResult = await client.query('SELECT name FROM Resources WHERE resource_id = $1', [resourceId]);
+                const resourceName = resourceNameResult.rows[0]?.name || 'a resource';
+
+                await client.query(
+                    'INSERT INTO Notifications (notification_id, user_id, message, type, is_read, created_at) VALUES ($1, $2, $3, $4, FALSE, CURRENT_TIMESTAMP)',
+                    [uuidv4(), requesterId, `Your request for '${resourceName}' has been rejected by admin.`, 'request_rejected']
+                );
+            } else if (status === 'Completed') {
+                const resourceNameResult = await client.query('SELECT name FROM Resources WHERE resource_id = $1', [resourceId]);
+                const resourceName = resourceNameResult.rows[0]?.name || 'a resource';
+                const requesterUsernameResult = await client.query('SELECT username FROM Users WHERE user_id = $1', [requesterId]);
+                const requesterUsername = requesterUsernameResult.rows[0]?.username || 'a user';
+
+                await client.query(
+                    'INSERT INTO Notifications (notification_id, user_id, message, type, is_read, created_at) VALUES ($1, $2, $3, $4, FALSE, CURRENT_TIMESTAMP)',
+                    [uuidv4(), requesterId, `Your request for '${resourceName}' has been marked as completed by admin.`, 'request_completed']
+                );
+                 // Also notify the owner that the request was completed
+                await client.query(
+                    'INSERT INTO Notifications (notification_id, user_id, message, type, is_read, created_at) VALUES ($1, $2, $3, $4, FALSE, CURRENT_TIMESTAMP)',
+                    [uuidv4(), resourceOwnerId, `Request for your resource '${resourceName}' by ${requesterUsername} has been marked as completed by admin.`, 'resource_completed']
+                );
+            }
+
+            await client.query('COMMIT'); // Commit transaction
+            res.json({ msg: `Request status updated to ${status}.`, request: updatedRequest.rows[0] });
+
+        } catch (err) {
+            if (client) await client.query('ROLLBACK'); // Rollback on error
+            console.error('Update Request Status Error:', err.message);
+            res.status(500).json({ msg: 'Server Error updating request status', error: err.message });
+        } finally {
+            if (client) client.release();
+        }
+    });
+
+    // @route   DELETE /api/admin/requests/:id
+    // @desc    Delete a request (e.g., if it's fraudulent or an error)
+    // @access  Private (Admin only)
+    router.delete('/requests/:id', protect, authorizeAdmin, async (req, res) => {
+        const requestIdToDelete = req.params.id;
+
+        try {
+            const deleteResult = await pool.query('DELETE FROM Requests WHERE request_id = $1 RETURNING request_id', [requestIdToDelete]);
+
+            if (deleteResult.rows.length === 0) {
+                return res.status(404).json({ msg: 'Request not found' });
+            }
+
+            res.json({ msg: 'Request deleted successfully', requestId: requestIdToDelete });
+
+        } catch (err) {
+            console.error('Admin Delete Request Error:', err.message);
+            res.status(500).send('Server Error deleting request');
         }
     });
 
