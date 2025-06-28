@@ -1,13 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { jwtDecode } from 'jwt-decode'; // Ensure you have installed this: npm install jwt-decode
+import { jwtDecode } from 'jwt-decode'; 
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
     const [currentUser, setCurrentUser] = useState(null);
-    const [loadingAuth, setLoadingAuth] = useState(true); // Manages initial auth check state
-    const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0); // State for unread count
+    const [loadingAuth, setLoadingAuth] = useState(true); 
+    const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0); 
     const navigate = useNavigate();
 
     // Helper to get auth headers for API calls
@@ -38,16 +38,16 @@ export const AuthProvider = ({ children }) => {
                 username: decoded.username 
             };
         } catch (error) {
-            // Log error internally but don't disrupt app flow
             console.error("AuthContext: Failed to decode token or token is invalid.", error);
             localStorage.removeItem('token'); // Clear invalid token
             return null;
         }
     }, []);
 
-    // Function to fetch unread notifications count
-    const fetchUnreadNotificationsCount = useCallback(async (user) => { // Takes user as argument
-        if (!user || !user.id) { // Ensure a user object with an ID is passed
+    // Function to fetch unread notifications count - now directly uses currentUser from AuthProvider's state
+    const fetchUnreadNotificationsCount = useCallback(async () => { 
+        // Use the currentUser from the context's state, which is guaranteed to be up-to-date
+        if (!currentUser || !currentUser.id) { 
             setUnreadNotificationsCount(0);
             return;
         }
@@ -60,68 +60,62 @@ export const AuthProvider = ({ children }) => {
                 const unreadCount = notifications.filter(n => !n.is_read).length;
                 setUnreadNotificationsCount(unreadCount);
             } else if (response.status === 401 || response.status === 403) {
-                // Handle unauthorized, but let the main auth useEffect handle logout/redirection
-                setUnreadNotificationsCount(0); // Clear count on auth error
+                setUnreadNotificationsCount(0); 
+                // Don't logout/navigate here, let the main useEffect or consuming component handle it
+                // to prevent multiple redirects.
             } else {
-                // Log other fetch errors internally
                 console.error("AuthContext: Failed to fetch unread notifications count.", response.status, response.statusText);
                 setUnreadNotificationsCount(0);
             }
         } catch (error) {
-            // Log network errors internally
             console.error("AuthContext: Network error fetching unread notifications count.", error);
             setUnreadNotificationsCount(0);
         }
-    }, [getAuthHeaders]);
+    }, [currentUser, getAuthHeaders]); // This dependency ensures the function updates if currentUser or headers change
 
 
-    // PRIMARY useEffect: Handles initial authentication check and loading state
+    // PRIMARY useEffect: Handles initial authentication check and setting currentUser
     useEffect(() => {
-        const initializeAuth = async () => {
-            setLoadingAuth(true); // Start loading
-
+        const initializeAuth = () => { // Removed async from here as fetchUnreadNotificationsCount is now in a separate useEffect
+            setLoadingAuth(true); 
             const token = localStorage.getItem('token');
-            const userFromToken = decodeToken(token); // Synchronously get user from token
-
-            setCurrentUser(userFromToken); // Set currentUser based on token
-
-            if (userFromToken) {
-                // If a valid user is found from token, then fetch their notifications
-                await fetchUnreadNotificationsCount(userFromToken); // Await the fetch
-            } else {
-                setUnreadNotificationsCount(0); // No user, reset count
-            }
-            
-            setLoadingAuth(false); // Authentication check is now complete
+            const userFromToken = decodeToken(token); 
+            setCurrentUser(userFromToken);
+            setLoadingAuth(false); 
         };
-
         initializeAuth();
-    }, [decodeToken, fetchUnreadNotificationsCount]); // Dependencies: decodeToken, fetchUnreadNotificationsCount
+    }, [decodeToken]); 
+
+    // NEW useEffect: Triggers notification count fetch whenever currentUser changes (after login/logout/initial load)
+    useEffect(() => {
+        if (currentUser) {
+            fetchUnreadNotificationsCount(); // Call without arguments, as it uses internal currentUser
+        } else {
+            setUnreadNotificationsCount(0); // Clear count if no current user
+        }
+    }, [currentUser, fetchUnreadNotificationsCount]); // Depend on currentUser and fetchUnreadNotificationsCount
 
 
     // Login function
-    const login = useCallback(async (token, userFromApi) => { // `userFromApi` is the user object from backend API response
+    const login = useCallback(async (token, userFromApi) => {
         localStorage.setItem('token', token);
-        // Prioritize data from API response, but ensure 'id' from token is used for consistency
         const decodedUser = decodeToken(token);
         if (decodedUser) {
-            // Merge API user data with decoded ID/role (API might have more fields)
             setCurrentUser({ ...userFromApi, ...decodedUser });
-            await fetchUnreadNotificationsCount(decodedUser); // Fetch notifications right after login
+            // fetchUnreadNotificationsCount will be triggered by the new useEffect
         } else {
-            // Fallback if token decoding somehow fails even after successful login
             setCurrentUser(null);
             setUnreadNotificationsCount(0);
             localStorage.removeItem('token');
         }
-    }, [decodeToken, fetchUnreadNotificationsCount]);
+    }, [decodeToken]);
 
     // Logout function
     const logout = useCallback(() => {
         localStorage.removeItem('token');
-        setCurrentUser(null); // Clear user state
-        setUnreadNotificationsCount(0); // Reset count immediately
-        navigate('/login'); // Redirect to login page on logout
+        setCurrentUser(null); 
+        setUnreadNotificationsCount(0); 
+        navigate('/login'); 
     }, [navigate]);
 
     // Value provided to components consuming AuthContext
@@ -131,9 +125,9 @@ export const AuthProvider = ({ children }) => {
         login,
         logout,
         loadingAuth,
-        isLoggedIn: !!currentUser, // CORRECTED: Added isLoggedIn derived from currentUser
+        isLoggedIn: !!currentUser, 
         unreadNotificationsCount, 
-        refreshUnreadNotificationsCount: fetchUnreadNotificationsCount 
+        refreshUnreadNotificationsCount: fetchUnreadNotificationsCount // Now this function signature is simpler
     };
 
     // Render loading indicator if authentication is still in progress

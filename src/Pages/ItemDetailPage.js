@@ -40,14 +40,14 @@ const MessageBox = ({ message, type, onClose }) => {
 };
 
 // Review Submission Modal
-const ReviewModal = ({ resource, onSaveReview, onClose, hasExistingReview, relatedCompletedRequestId }) => {
+const ReviewModal = ({ resource, onSaveReview, onClose, hasExistingReview, relatedCompletedRequestId, onShowMessage }) => {
     const [rating, setRating] = useState(0);
     const [comment, setComment] = useState('');
 
     const handleSubmit = (e) => {
         e.preventDefault();
         if (rating === 0) {
-            alert('Please select a rating!'); 
+            onShowMessage('Please select a rating!', 'error'); // Using onShowMessage
             return;
         }
         onSaveReview({ relatedRequestId: relatedCompletedRequestId, rating, comment });
@@ -94,13 +94,13 @@ const ReviewModal = ({ resource, onSaveReview, onClose, hasExistingReview, relat
                                 value={comment}
                                 onChange={(e) => setComment(e.target.value)}
                                 rows="4"
-                                className="block w-full" // Minimal styling
+                                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-pink-500 focus:border-pink-500 sm:text-sm"
                                 placeholder="Share your experience..."
                             ></textarea>
                         </div>
                         <div className="flex justify-end space-x-4 mt-6">
-                            <button type="button" onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100">Cancel</button>
-                            <button type="submit" className="px-6 py-2 bg-pink-600 text-white rounded-md hover:bg-pink-700">Submit Review</button>
+                            <button type="button" onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 transition-colors duration-200">Cancel</button>
+                            <button type="submit" className="px-6 py-2 bg-pink-600 text-white rounded-md hover:bg-pink-700 transition-colors duration-200">Submit Review</button>
                         </div>
                     </form>
                 )}
@@ -111,7 +111,7 @@ const ReviewModal = ({ resource, onSaveReview, onClose, hasExistingReview, relat
 
 
 // Borrow Request Modal
-const BorrowRequestModal = ({ resource, onClose, onSubmitRequest }) => {
+const BorrowRequestModal = ({ resource, onClose, onSubmitRequest, onShowMessage }) => {
     const [pickupDate, setPickupDate] = useState('');
     const [returnDate, setReturnDate] = useState('');
     const [pickupMethod, setPickupMethod] = useState('Meetup'); // Default value
@@ -122,11 +122,11 @@ const BorrowRequestModal = ({ resource, onClose, onSubmitRequest }) => {
         e.preventDefault();
         // Basic validation
         if (!pickupDate || !returnDate || !pickupMethod || !borrowLocation) {
-            alert('Please fill in all required fields for the borrow request.');
+            onShowMessage('Please fill in all required fields for the borrow request.', 'error');
             return;
         }
         if (new Date(pickupDate) > new Date(returnDate)) {
-            alert('Return date cannot be before pickup date.');
+            onShowMessage('Return date cannot be before pickup date.', 'error');
             return;
         }
 
@@ -155,17 +155,17 @@ const BorrowRequestModal = ({ resource, onClose, onSubmitRequest }) => {
                     <div>
                         <label htmlFor="pickupDate" className="block text-gray-700 text-sm font-medium mb-1">Pickup Date:</label>
                         <input type="date" id="pickupDate" name="pickupDate" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} required
-                            className="block w-full" /> 
+                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-pink-500 focus:border-pink-500 sm:text-sm" /> 
                     </div>
                     <div>
                         <label htmlFor="returnDate" className="block text-gray-700 text-sm font-medium mb-1">Return Date:</label>
                         <input type="date" id="returnDate" name="returnDate" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} required
-                            className="block w-full" /> 
+                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-pink-500 focus:border-pink-500 sm:text-sm" /> 
                     </div>
                     <div>
                         <label htmlFor="pickupMethod" className="block text-gray-700 text-sm font-medium mb-1">Pickup Method:</label>
                         <select id="pickupMethod" name="pickupMethod" value={pickupMethod} onChange={(e) => setPickupMethod(e.target.value)} required
-                            className="block w-full bg-white" > 
+                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-pink-500 focus:border-pink-500 sm:text-sm bg-white" > 
                             <option value="Meetup">Meetup</option>
                             <option value="Delivery">Delivery</option>
                         </select>
@@ -173,18 +173,88 @@ const BorrowRequestModal = ({ resource, onClose, onSubmitRequest }) => {
                     <div>
                         <label htmlFor="borrowLocation" className="block text-gray-700 text-sm font-medium mb-1">Borrow Location:</label>
                         <input type="text" id="borrowLocation" name="borrowLocation" value={borrowLocation} onChange={(e) => setBorrowLocation(e.target.value)} required
-                            className="block w-full" 
+                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-pink-500 focus:border-pink-500 sm:text-sm" 
                             placeholder="e.g., Nairobi CBD, Owner's Address" /> 
                     </div>
                     <div>
                         <label htmlFor="messageToOwner" className="block text-gray-700 text-sm font-medium mb-1">Message to Owner (Optional):</label>
                         <textarea id="messageToOwner" name="messageToOwner" value={messageToOwner} onChange={(e) => setMessageToOwner(e.target.value)}
-                            rows="3" className="block w-full"
+                            rows="3" className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-pink-500 focus:border-pink-500 sm:text-sm"
                             placeholder="Any specific instructions or questions?"></textarea> 
                     </div>
                     <div className="flex justify-end space-x-4 mt-6">
-                        <button type="button" onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100">Cancel</button>
-                        <button type="submit" className="px-6 py-2 bg-pink-600 text-white rounded-md hover:bg-pink-700">Submit Request</button>
+                        <button type="button" onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 transition-colors duration-200">Cancel</button>
+                        <button type="submit" className="px-6 py-2 bg-pink-600 text-white rounded-md hover:bg-pink-700 transition-colors duration-200">Submit Request</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+// Report User Modal Component
+const ReportUserModal = ({ resource, reportedUser, relatedRequestId, onClose, onSubmitReport, onShowMessage }) => {
+    const [reportType, setReportType] = useState('');
+    const [description, setDescription] = useState('');
+
+    const allowedReportTypes = ['Item Damaged', 'Late Return', 'Did Not Return Item', 'Misconduct', 'Other'];
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!reportType || !description) {
+            onShowMessage('Please select a report type and provide a description.', 'error');
+            return;
+        }
+        onSubmitReport({ requestId: relatedRequestId, reportedUserId: reportedUser.user_id, reportType, description });
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full relative my-8 text-gray-900">
+                <button
+                    onClick={onClose}
+                    className="absolute top-3 right-3 text-gray-500 hover:text-gray-800 text-3xl font-bold p-1 rounded-full hover:bg-gray-200 transition-colors leading-none"
+                    aria-label="Close modal"
+                >
+                    &times;
+                </button>
+                <h3 className="text-2xl font-bold text-red-700 mb-6 text-center">Report User: {reportedUser.username}</h3>
+                <p className="text-gray-700 mb-4 text-center">
+                    Reporting regarding the completed borrow request for "{resource.name}".
+                </p>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label htmlFor="reportType" className="block text-gray-700 text-sm font-medium mb-1">Report Type:</label>
+                        <select
+                            id="reportType"
+                            name="reportType"
+                            value={reportType}
+                            onChange={(e) => setReportType(e.target.value)}
+                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm bg-white"
+                            required
+                        >
+                            <option value="">-- Select Report Type --</option>
+                            {allowedReportTypes.map(type => (
+                                <option key={type} value={type}>{type}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="description" className="block text-gray-700 text-sm font-medium mb-1">Description:</label>
+                        <textarea
+                            id="description"
+                            name="description"
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            rows="5"
+                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
+                            placeholder="Provide a detailed description of the issue..."
+                            required
+                        ></textarea>
+                    </div>
+                    <div className="flex justify-end space-x-4 mt-6">
+                        <button type="button" onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 transition-colors duration-200">Cancel</button>
+                        <button type="submit" className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors duration-200">Submit Report</button>
                     </div>
                 </form>
             </div>
@@ -196,7 +266,7 @@ const BorrowRequestModal = ({ resource, onClose, onSubmitRequest }) => {
 function ItemDetailPage() {
     const { id } = useParams(); 
     const navigate = useNavigate();
-    const { currentUser, isLoggedIn, loadingAuth } = useAuth(); 
+    const { currentUser, isLoggedIn, loadingAuth } = useAuth(); // Removed getAuthHeaders from destructuring
     
     const [item, setItem] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -206,11 +276,18 @@ function ItemDetailPage() {
     const [reviews, setReviews] = useState([]); 
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false); 
     const [canReview, setCanReview] = useState(false); 
-    const [relatedCompletedRequestId, setRelatedCompletedRequestId] = useState(null); 
+    const [relatedCompletedRequestIdForReview, setRelatedCompletedRequestIdForReview] = useState(null); 
     const [hasExistingReview, setHasExistingReview] = useState(false); 
 
     const [isBorrowModalOpen, setIsBorrowModalOpen] = useState(false);
 
+    // State for Report User functionality
+    const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+    const [canReportUser, setCanReportUser] = useState(false);
+    const [reportedBorrowerDetails, setReportedBorrowerDetails] = useState(null);
+    const [relatedCompletedRequestIdForReport, setRelatedCompletedRequestIdForReport] = useState(null); 
+
+    // Re-added getAuthHeaders as a useCallback within the component
     const getAuthHeaders = useCallback(() => {
         const token = localStorage.getItem('token');
         return {
@@ -218,6 +295,7 @@ function ItemDetailPage() {
             'x-auth-token': token,
         };
     }, []);
+
 
     const fetchItemDetails = useCallback(async () => {
         setLoading(true);
@@ -257,81 +335,152 @@ function ItemDetailPage() {
 
     const checkReviewEligibility = useCallback(async () => {
         if (loadingAuth || !isLoggedIn || !currentUser || !id) { 
-            console.log("DEBUG_REVIEW: Skipping eligibility check. Auth not ready or not logged in.");
             setCanReview(false);
             setHasExistingReview(false);
-            setRelatedCompletedRequestId(null);
+            setRelatedCompletedRequestIdForReview(null);
             return;
         }
-        console.log("DEBUG_REVIEW: Starting eligibility check for user:", currentUser.id, " item:", id);
 
         try {
             const response = await fetch(`http://localhost:5000/api/requests/sent`, {
                 headers: getAuthHeaders(),
             });
             const data = await response.json();
-            console.log("DEBUG_REVIEW: Response from /api/requests/sent (full data):", data); 
 
             if (!response.ok) {
-                console.error("DEBUG_REVIEW: Failed to fetch sent requests for review eligibility:", data.msg);
+                console.error("Failed to fetch sent requests for review eligibility:", data.msg);
                 setCanReview(false);
                 setHasExistingReview(false);
-                setRelatedCompletedRequestId(null);
+                setRelatedCompletedRequestIdForReview(null);
                 return;
             }
 
-            debugger; // <--- Added debugger here for precise inspection
-            // Find a completed request for this resource by the current user
             const completedRequest = data.find(
-                (req) => {
-                    const isResourceMatch = String(req.resource_id).trim() === String(id).trim();
-                    const isRequesterMatch = String(req.requester_id).trim() === String(currentUser.id).trim();
-                    const isStatusCompleted = req.status === 'Completed';
-
-                    console.log(`DEBUG_FIND: Checking request_id: ${req.request_id}`);
-                    console.log(`DEBUG_FIND:   Resource ID Match: ${isResourceMatch} (Req: '${String(req.resource_id).trim()}' vs Item: '${String(id).trim()}')`);
-                    console.log(`DEBUG_FIND:   Requester ID Match: ${isRequesterMatch} (Req: '${String(req.requester_id).trim()}' vs CurrentUser: '${String(currentUser.id).trim()}')`);
-                    console.log(`DEBUG_FIND:   Status Completed: ${isStatusCompleted} (Req: '${req.status}')`);
-                    console.log(`DEBUG_FIND:   Overall Match: ${isResourceMatch && isRequesterMatch && isStatusCompleted}`);
-                    
-                    return isResourceMatch && isRequesterMatch && isStatusCompleted;
-                }
+                (req) => 
+                    String(req.resource_id).trim() === String(id).trim() && 
+                    String(req.requester_id).trim() === String(currentUser.id).trim() && 
+                    req.status === 'Completed'
             );
-            console.log("DEBUG_REVIEW: Found completed request (after filter):", completedRequest);
-
-
+            
             if (completedRequest) {
-                // Check if a review already exists for this specific completed transaction
                 const existingReviewCheck = await fetch(`http://localhost:5000/api/reviews/check-existing/${completedRequest.request_id}`, {
                     headers: getAuthHeaders(),
                 });
                 const existingReviewData = await existingReviewCheck.json();
-                console.log("DEBUG_REVIEW: Existing review check response:", existingReviewData);
 
                 if (existingReviewCheck.ok && existingReviewData.hasReview) {
-                    console.log("DEBUG_REVIEW: User has existing review for this completed request.");
                     setCanReview(false);
                     setHasExistingReview(true); 
-                    setRelatedCompletedRequestId(completedRequest.request_id);
+                    setRelatedCompletedRequestIdForReview(completedRequest.request_id);
                 } else {
-                    console.log("DEBUG_REVIEW: User is eligible to review.");
                     setCanReview(true);
                     setHasExistingReview(false);
-                    setRelatedCompletedRequestId(completedRequest.request_id);
+                    setRelatedCompletedRequestIdForReview(completedRequest.request_id);
                 }
             } else {
-                console.log("DEBUG_REVIEW: No completed request found for this item by this user.");
                 setCanReview(false);
                 setHasExistingReview(false);
-                setRelatedCompletedRequestId(null);
+                setRelatedCompletedRequestIdForReview(null);
             }
         } catch (err) {
-            console.error("DEBUG_REVIEW: Error checking review eligibility:", err);
+            console.error("Error checking review eligibility:", err);
             setCanReview(false);
             setHasExistingReview(false);
-            setRelatedCompletedRequestId(null);
+            setRelatedCompletedRequestIdForReview(null);
         }
     }, [isLoggedIn, currentUser, id, getAuthHeaders, loadingAuth]);
+
+
+    // Check Report Eligibility
+    const checkReportEligibility = useCallback(async () => {
+        if (loadingAuth || !isLoggedIn || !currentUser || !id) {
+            setCanReportUser(false);
+            setReportedBorrowerDetails(null);
+            setRelatedCompletedRequestIdForReport(null);
+            return;
+        }
+
+        if (!item) return; // Wait for item to be loaded
+
+        // Only owner can report on their items
+        if (String(item.owner_id).trim() !== String(currentUser.id).trim()) {
+            setCanReportUser(false);
+            setReportedBorrowerDetails(null);
+            setRelatedCompletedRequestIdForReport(null);
+            return;
+        }
+
+        try {
+            // Fetch requests received by this owner for THIS resource
+            const response = await fetch(`http://localhost:5000/api/requests/received`, { // Changed to /received endpoint
+                headers: getAuthHeaders(),
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                console.error("Failed to fetch received requests for report eligibility:", data.msg);
+                setCanReportUser(false);
+                setReportedBorrowerDetails(null);
+                setRelatedCompletedRequestIdForReport(null);
+                return;
+            }
+
+            // Find a completed request where current user is owner for this resource and there's a borrower
+            const completedRequestAsOwner = data.find(
+                (req) => 
+                    String(req.resource_id).trim() === String(id).trim() && 
+                    req.status === 'Completed' &&
+                    String(req.requester_id).trim() !== String(currentUser.id).trim() // Ensure it's not a self-request from admin panel for example
+            );
+
+            if (completedRequestAsOwner) {
+                // Fetch details of the borrower (requester)
+                const borrowerResponse = await fetch(`http://localhost:5000/api/user/profile/${completedRequestAsOwner.requester_id}`, {
+                    headers: getAuthHeaders(),
+                });
+                const borrowerData = await borrowerResponse.json();
+
+                if (borrowerResponse.ok) {
+                    // Check if a report for this specific request already exists
+                    const existingReportsResponse = await fetch(`http://localhost:5000/api/reports`, { // Fetch all reports
+                        headers: getAuthHeaders(),
+                    });
+                    const existingReports = await existingReportsResponse.json();
+                    
+                    const hasExistingReportForThisRequest = existingReports.some(report => 
+                        String(report.related_request_id).trim() === String(completedRequestAsOwner.request_id).trim()
+                    );
+
+                    if (hasExistingReportForThisRequest) {
+                        setCanReportUser(false);
+                        setReportedBorrowerDetails(null); 
+                        setRelatedCompletedRequestIdForReport(null);
+                    } else {
+                        setCanReportUser(true);
+                        setReportedBorrowerDetails({
+                            user_id: completedRequestAsOwner.requester_id,
+                            username: borrowerData.username // Assuming the API returns username
+                        });
+                        setRelatedCompletedRequestIdForReport(completedRequestAsOwner.request_id);
+                    }
+                } else {
+                    console.error("Failed to fetch borrower profile for reporting:", borrowerData.msg);
+                    setCanReportUser(false);
+                    setReportedBorrowerDetails(null);
+                    setRelatedCompletedRequestIdForReport(null);
+                }
+            } else {
+                setCanReportUser(false);
+                setReportedBorrowerDetails(null);
+                setRelatedCompletedRequestIdForReport(null);
+            }
+        } catch (err) {
+            console.error("Error checking report eligibility:", err);
+            setCanReportUser(false);
+            setReportedBorrowerDetails(null);
+            setRelatedCompletedRequestIdForReport(null);
+        }
+    }, [isLoggedIn, currentUser, id, item, getAuthHeaders, loadingAuth]);
 
 
     const handleSaveReview = async ({ relatedRequestId, rating, comment }) => {
@@ -381,17 +530,48 @@ function ItemDetailPage() {
         }
     };
 
+    // Handle Report Submission
+    const handleReportSubmit = async ({ requestId, reportedUserId, reportType, description }) => {
+        console.log('DEBUG_REPORT_SUBMIT: Attempting to submit report with requestId:', requestId);
+        try {
+            const response = await fetch('http://localhost:5000/api/reports', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ requestId, reportedUserId, reportType, description }),
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                setMessageBox({ show: true, message: data.msg || 'Failed to submit report.', type: 'error' });
+                return;
+            }
+
+            setMessageBox({ show: true, message: 'Report submitted successfully. An administrator will review it.', type: 'success' });
+            setIsReportModalOpen(false);
+            checkReportEligibility(); // Re-check eligibility to update button state
+        } catch (err) {
+            console.error("Error submitting report:", err);
+            setMessageBox({ show: true, message: 'An error occurred while submitting your report.', type: 'error' });
+        }
+    };
 
     useEffect(() => {
         fetchItemDetails();
         fetchReviews();
     }, [fetchItemDetails, fetchReviews]);
 
+    // Combined useEffect for eligibility checks that depend on item and auth
     useEffect(() => {
         if (!loadingAuth && item) { 
             checkReviewEligibility();
+            checkReportEligibility();
         }
-    }, [loadingAuth, item, checkReviewEligibility]);
+    }, [loadingAuth, item, checkReviewEligibility, checkReportEligibility]);
+
+    // Use a unified message box handler for convenience
+    const showMessageBox = useCallback((message, type) => {
+        setMessageBox({ show: true, message, type });
+    }, []);
 
     
     if (loading || loadingAuth) { 
@@ -418,7 +598,7 @@ function ItemDetailPage() {
         );
     }
 
-    const isOwner = currentUser && item.owner_id && currentUser.id === item.owner_id;
+    const isOwner = currentUser && item.owner_id && String(currentUser.id).trim() === String(item.owner_id).trim();
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-black via-[#73aeb7] to-[#652a37] text-white font-sans py-16 px-6 md:px-20">
@@ -495,6 +675,21 @@ function ItemDetailPage() {
                                 You can leave a review after successfully completing a borrow for this item.
                             </p>
                          )}
+
+                         {/* NEW: Conditional "Report User" button */}
+                        {isLoggedIn && isOwner && canReportUser && reportedBorrowerDetails && relatedCompletedRequestIdForReport && (
+                            <button
+                                onClick={() => setIsReportModalOpen(true)}
+                                className="w-full mt-4 py-3 px-6 bg-red-600 text-white rounded-md font-semibold text-lg hover:bg-red-700 transition-colors shadow-md"
+                            >
+                                Report Borrower ({reportedBorrowerDetails.username})
+                            </button>
+                        )}
+                        {isLoggedIn && isOwner && !canReportUser && (
+                            <p className="text-center text-gray-400 mt-4 text-sm">
+                                You can report a borrower after a completed request for this item.
+                            </p>
+                        )}
                     </div>
                 </div>
 
@@ -540,7 +735,8 @@ function ItemDetailPage() {
                     onSaveReview={handleSaveReview}
                     onClose={() => setIsReviewModalOpen(false)}
                     hasExistingReview={hasExistingReview}
-                    relatedCompletedRequestId={relatedCompletedRequestId}
+                    relatedCompletedRequestId={relatedCompletedRequestIdForReview}
+                    onShowMessage={showMessageBox}
                 />
             )}
 
@@ -550,6 +746,19 @@ function ItemDetailPage() {
                     resource={item}
                     onClose={() => setIsBorrowModalOpen(false)}
                     onSubmitRequest={handleBorrowRequestSubmit}
+                    onShowMessage={showMessageBox}
+                />
+            )}
+
+            {/* Report User Modal */}
+            {isReportModalOpen && item && currentUser && reportedBorrowerDetails && relatedCompletedRequestIdForReport && (
+                <ReportUserModal
+                    resource={item}
+                    reportedUser={reportedBorrowerDetails}
+                    relatedRequestId={relatedCompletedRequestIdForReport}
+                    onClose={() => setIsReportModalOpen(false)}
+                    onSubmitReport={handleReportSubmit}
+                    onShowMessage={showMessageBox}
                 />
             )}
 
