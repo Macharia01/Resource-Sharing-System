@@ -1,268 +1,15 @@
+// frontend/src/pages/AdminDashboardPage.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
-import { v4 as uuidv4 } from 'uuid'; // For generating notification IDs if needed, though backend handles this
 
-
-// Custom Message Box Component (copied for consistency)
-const MessageBox = ({ message, type, onClose }) => {
-    let bgColor = '';
-    let textColor = '';
-    switch (type) {
-        case 'success':
-            bgColor = 'bg-green-500';
-            textColor = 'text-white';
-            break;
-        case 'error':
-            bgColor = 'bg-red-500';
-            textColor = 'text-white';
-            break;
-        case 'info':
-            bgColor = 'bg-blue-500';
-            textColor = 'text-white';
-            break;
-        default:
-            bgColor = 'bg-gray-700';
-            textColor = 'text-white';
-    }
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[100]">
-            <div className={`p-6 rounded-lg shadow-2xl ${bgColor} ${textColor} text-center max-w-sm mx-auto relative`}>
-                <p className="text-lg font-semibold mb-4">{message}</p>
-                <button
-                    onClick={onClose}
-                    className="mt-3 px-6 py-2 bg-white text-gray-800 rounded-md hover:bg-gray-100 transition-colors duration-200"
-                >
-                    OK
-                </button>
-            </div>
-        </div>
-    );
-};
-
-// Custom Confirmation Modal Component (copied for consistency)
-const ConfirmationDialog = ({ message, onConfirm, onCancel }) => {
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[101]">
-            <div className="bg-white p-8 rounded-lg shadow-2xl text-gray-900 text-center max-w-sm mx-auto relative">
-                <p className="text-lg font-semibold mb-6">{message}</p>
-                <div className="flex justify-center space-x-4">
-                    <button
-                        onClick={onCancel}
-                        className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={onConfirm}
-                        className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-                    >
-                        Confirm
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// Inline Modal Component for Editing User
-function EditUserModal({ user, onClose, onSave }) {
-    const [formData, setFormData] = useState({
-        firstName: user.first_name || '', 
-        lastName: user.last_name || '',   
-        email: user.email || '',
-        phoneNumber: user.phone_number || '', 
-        username: user.username || '',
-        address: user.address || '',
-        role: user.role || 'member',
-    });
-
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        onSave(user.user_id, formData); 
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 overflow-y-auto">
-            <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full relative my-8">
-                <button
-                    onClick={onClose}
-                    className="absolute top-3 right-3 text-gray-500 hover:text-gray-800 text-3xl font-bold p-1 rounded-full hover:bg-gray-200 transition-colors leading-none"
-                    aria-label="Close modal"
-                >
-                    &times;
-                </button>
-
-                <h3 className="text-2xl font-bold text-pink-700 mb-6 text-center">Edit User: {user.username}</h3>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label htmlFor="editUserFirstName" className="block text-gray-700 text-sm font-medium mb-1">First Name</label>
-                        <input type="text" id="editUserFirstName" name="firstName" value={formData.firstName} onChange={handleChange} required
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900" />
-                    </div>
-                    <div>
-                        <label htmlFor="editUserLastName" className="block text-gray-700 text-sm font-medium mb-1">Last Name</label>
-                        <input type="text" id="editUserLastName" name="lastName" value={formData.lastName} onChange={handleChange} required
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900" />
-                    </div>
-                    <div>
-                        <label htmlFor="editUserUsername" className="block text-gray-700 text-sm font-medium mb-1">Username</label>
-                        <input type="text" id="editUserUsername" name="username" value={formData.username} onChange={handleChange} required
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900" />
-                    </div>
-                    <div>
-                        <label htmlFor="editUserEmail" className="block text-gray-700 text-sm font-medium mb-1">Email</label>
-                        <input type="email" id="editUserEmail" name="email" value={formData.email} onChange={handleChange} required
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900" />
-                    </div>
-                    <div>
-                        <label htmlFor="editUserPhoneNumber" className="block text-gray-700 text-sm font-medium mb-1">Phone Number</label>
-                        <input type="tel" id="editUserPhoneNumber" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange}
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900" />
-                    </div>
-                    <div>
-                        <label htmlFor="editUserAddress" className="block text-gray-700 text-sm font-medium mb-1">Address</label>
-                        <input type="text" id="editUserAddress" name="address" value={formData.address} onChange={handleChange}
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900" />
-                    </div>
-                    <div>
-                        <label htmlFor="editUserRole" className="block text-gray-700 text-sm font-medium mb-1">Role</label>
-                        <select id="editUserRole" name="role" value={formData.role} onChange={handleChange} required
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900 bg-white">
-                            <option value="member">Member</option>
-                            <option value="admin">Admin</option>
-                        </select>
-                    </div>
-                    <div className="flex justify-end space-x-4 mt-6">
-                        <button type="button" onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100">Cancel</button>
-                        <button type="submit" className="px-6 py-2 bg-pink-600 text-white rounded-md hover:bg-pink-700">Save Changes</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
-
-// Inline Modal Component for Editing Resource
-function EditResourceModal({ resource, onClose, onSave }) {
-    const [formData, setFormData] = useState({
-        name: resource.name || '',
-        description: resource.description || '',
-        category: resource.category || '',
-        location: resource.location || '',
-        availability_status: resource.availability_status || 'Available',
-    });
-
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        onSave(resource.resource_id, formData);
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 overflow-y-auto">
-            <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full relative my-8">
-                <button
-                    onClick={onClose}
-                    className="absolute top-3 right-3 text-gray-500 hover:text-gray-800 text-3xl font-bold p-1 rounded-full hover:bg-gray-200 transition-colors leading-none"
-                    aria-label="Close modal"
-                >
-                    &times;
-                </button>
-
-                <h3 className="text-2xl font-bold text-pink-700 mb-6 text-center">Edit Listing: {resource.name}</h3>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label htmlFor="editResourceName" className="block text-gray-700 text-sm font-medium mb-1">Name</label>
-                        <input type="text" id="editResourceName" name="name" value={formData.name} onChange={handleChange} required
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900" />
-                    </div>
-                    <div>
-                        <label htmlFor="editResourceDescription" className="block text-gray-700 text-sm font-medium mb-1">Description</label>
-                        <textarea id="editResourceDescription" name="description" value={formData.description} onChange={handleChange} required
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900 h-24 resize-y"></textarea>
-                    </div>
-                    <div>
-                        <label htmlFor="editResourceCategory" className="block text-gray-700 text-sm font-medium mb-1">Category</label>
-                        <input type="text" id="editResourceCategory" name="category" value={formData.category} onChange={handleChange} required
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900" />
-                    </div>
-                    <div>
-                        <label htmlFor="editResourceLocation" className="block text-gray-700 text-sm font-medium mb-1">Location</label>
-                        <input type="text" id="editResourceLocation" name="location" value={formData.location} onChange={handleChange} required
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900" />
-                    </div>
-                    <div>
-                        <label htmlFor="editResourceStatus" className="block text-gray-700 text-sm font-medium mb-1">Availability Status</label>
-                        <select id="editResourceStatus" name="availability_status" value={formData.availability_status} onChange={handleChange} required
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900 bg-white">
-                            <option value="Available">Available</option>
-                            <option value="Reserved">Reserved</option>
-                            <option value="Borrowed">Borrowed</option>
-                            <option value="Donated">Donated</option>
-                        </select>
-                    </div>
-                    <div className="flex justify-end space-x-4 mt-6">
-                        <button type="button" onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100">Cancel</button>
-                        <button type="submit" className="px-6 py-2 bg-pink-600 text-white rounded-md hover:bg-pink-700">Save Changes</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
-
-// Inline Modal Component for Request Status Update
-function EditRequestStatusModal({ request, onClose, onSave }) {
-    const [status, setStatus] = useState(request.status || 'Pending');
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        onSave(request.request_id, status);
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 overflow-y-auto">
-            <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full relative my-8">
-                <button
-                    onClick={onClose}
-                    className="absolute top-3 right-3 text-gray-500 hover:text-gray-800 text-3xl font-bold p-1 rounded-full hover:bg-gray-200 transition-colors leading-none"
-                    aria-label="Close modal"
-                >
-                    &times;
-                </button>
-
-                <h3 className="text-2xl font-bold text-pink-700 mb-6 text-center">Update Request Status</h3>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label htmlFor="requestStatus" className="block text-gray-700 text-sm font-medium mb-1">Status</label>
-                        <select id="requestStatus" name="status" value={status} onChange={(e) => setStatus(e.target.value)} required
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900 bg-white">
-                            <option value="Pending">Pending</option>
-                            <option value="Approved">Approved</option>
-                            <option value="Rejected">Rejected</option>
-                            <option value="Completed">Completed</option>
-                        </select>
-                    </div>
-                    <div className="flex justify-end space-x-4 mt-6">
-                        <button type="button" onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100">Cancel</button>
-                        <button type="submit" className="px-6 py-2 bg-pink-600 text-white rounded-md hover:bg-pink-700">Save Changes</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
+// Import refactored components
+import MessageBox from '../components/common/MessageBox';
+import ConfirmationDialog from '../components/common/ConfirmationDialog';
+import EditUserModal from '../components/admin/EditUserModal';
+import EditResourceModal from '../components/admin/EditResourceModal';
+import EditRequestStatusModal from '../components/admin/EditRequestStatusModal';
+import ReportDetailsModal from '../components/admin/ReportDetailsModal';
 
 
 function AdminDashboardPage() {
@@ -278,7 +25,8 @@ function AdminDashboardPage() {
     });
     const [users, setUsers] = useState([]);
     const [resources, setResources] = useState([]);
-    const [requests, setRequests] = useState([]); // NEW: State for requests
+    const [requests, setRequests] = useState([]); 
+    const [reports, setReports] = useState([]); 
     const [loading, setLoading] = useState(true); 
     const [error, setError] = useState(null);
     const [activeView, setActiveView] = useState('dashboard');
@@ -289,14 +37,17 @@ function AdminDashboardPage() {
     const [isResourceModalOpen, setIsResourceModalOpen] = useState(false);
     const [editingResource, setEditingResource] = useState(null);
 
-    const [isRequestStatusModalOpen, setIsRequestStatusModalOpen] = useState(false); // NEW: Request status modal state
-    const [editingRequest, setEditingRequest] = useState(null); // NEW: Request being edited
+    const [isRequestStatusModalOpen, setIsRequestStatusModalOpen] = useState(false); 
+    const [editingRequest, setEditingRequest] = useState(null); 
 
+    const [isReportDetailsModalOpen, setIsReportDetailsModalOpen] = useState(false); 
+    const [viewingReport, setViewingReport] = useState(null); 
 
     // State for search queries
     const [userSearchQuery, setUserSearchQuery] = useState('');
     const [listingSearchQuery, setListingSearchQuery] = useState('');
-    const [requestSearchQuery, setRequestSearchQuery] = useState(''); // NEW: Request search query
+    const [requestSearchQuery, setRequestSearchQuery] = useState(''); 
+    const [reportSearchQuery, setReportSearchQuery] = useState(''); 
 
     const [messageBox, setMessageBox] = useState({ show: false, message: '', type: '' });
     const [confirmDialog, setConfirmDialog] = useState({ show: false, message: '', onConfirm: null });
@@ -319,6 +70,12 @@ function AdminDashboardPage() {
             setMessageBox({ show: true, message: `Operation failed: ${msg || 'Unknown error'}`, type: 'error' });
         }
     }, [logout, navigate]);
+
+    // Unified message box handler for convenience
+    const showMessageBox = useCallback((message, type) => {
+        setMessageBox({ show: true, message, type });
+    }, []);
+
 
     const fetchAdminStats = useCallback(async () => {
         if (activeView === 'dashboard') setLoading(true); 
@@ -384,7 +141,7 @@ function AdminDashboardPage() {
         }
     }, [getAuthHeaders, handleApiError, activeView]); 
 
-    // NEW: Function to fetch all requests
+    // Function to fetch all requests
     const fetchRequests = useCallback(async () => {
         if (activeView === 'requests') setLoading(true);
         setError(null);
@@ -406,6 +163,28 @@ function AdminDashboardPage() {
         }
     }, [getAuthHeaders, handleApiError, activeView]);
 
+    // Function to fetch all reports
+    const fetchReports = useCallback(async () => {
+        if (activeView === 'reports') setLoading(true);
+        setError(null);
+        try {
+            const response = await fetch('http://localhost:5000/api/reports', { 
+                headers: getAuthHeaders(),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                handleApiError(response.status, data.msg);
+                return;
+            }
+            setReports(data);
+        } catch (err) {
+            console.error("AdminDashboardPage: Error fetching reports:", err);
+            setError('An error occurred while fetching report data. Please try again.');
+        } finally {
+            if (activeView === 'reports') setLoading(false);
+        }
+    }, [getAuthHeaders, handleApiError, activeView]);
+
     const handleDeleteUser = (userId) => {
         setConfirmDialog({
             show: true,
@@ -423,12 +202,12 @@ function AdminDashboardPage() {
                         handleApiError(response.status, data.msg);
                         return;
                     }
-                    setMessageBox({ show: true, message: data.msg, type: 'success' });
+                    showMessageBox(data.msg, 'success');
                     setUsers(prevUsers => prevUsers.filter(user => user.user_id !== userId));
                     fetchAdminStats(); // Refresh stats after deletion
                 } catch (err) {
                     console.error("Error deleting user:", err);
-                    setMessageBox({ show: true, message: 'An error occurred while deleting the user.', type: 'error' });
+                    showMessageBox('An error occurred while deleting the user.', 'error');
                 }
             },
             onCancel: () => setConfirmDialog({ show: false, message: '', onConfirm: null })
@@ -452,12 +231,12 @@ function AdminDashboardPage() {
                         handleApiError(response.status, data.msg);
                         return;
                     }
-                    setMessageBox({ show: true, message: data.msg, type: 'success' });
+                    showMessageBox(data.msg, 'success');
                     setResources(prevResources => prevResources.filter(resource => resource.resource_id !== resourceId));
                     fetchAdminStats(); // Refresh stats after deletion
                 } catch (err) {
                     console.error("Error deleting resource:", err);
-                    setMessageBox({ show: true, message: 'An error occurred while deleting the listing.', type: 'error' });
+                    showMessageBox('An error occurred while deleting the listing.', 'error');
                 }
             },
             onCancel: () => setConfirmDialog({ show: false, message: '', onConfirm: null })
@@ -482,7 +261,7 @@ function AdminDashboardPage() {
                 handleApiError(response.status, data.msg);
                 return;
             }
-            setMessageBox({ show: true, message: data.msg, type: 'success' });
+            showMessageBox(data.msg, 'success');
             setUsers(prevUsers => prevUsers.map(user =>
                 user.user_id === userId ? { 
                     ...user, 
@@ -499,7 +278,7 @@ function AdminDashboardPage() {
             setEditingUser(null);
         } catch (err) {
             console.error("Error updating user:", err);
-            setMessageBox({ show: true, message: 'An error occurred while updating the user.', type: 'error' });
+            showMessageBox('An error occurred while updating the user.', 'error');
         }
     };
 
@@ -521,7 +300,7 @@ function AdminDashboardPage() {
                 handleApiError(response.status, data.msg);
                 return;
             }
-            setMessageBox({ show: true, message: data.msg, type: 'success' });
+            showMessageBox(data.msg, 'success');
             setResources(prevResources => prevResources.map(resource =>
                 resource.resource_id === resourceId ? { ...resource, ...data.resource } : resource
             ));
@@ -529,11 +308,11 @@ function AdminDashboardPage() {
             setEditingResource(null);
         } catch (err) {
             console.error("Error updating resource:", err);
-            setMessageBox({ show: true, message: 'An error occurred while updating the resource.', type: 'error' });
+            showMessageBox('An error occurred while updating the resource.', 'error');
         }
     };
 
-    // NEW: Handlers for Request Management
+    // Handlers for Request Management
     const handleEditRequestStatus = (request) => {
         setEditingRequest(request);
         setIsRequestStatusModalOpen(true);
@@ -552,7 +331,7 @@ function AdminDashboardPage() {
                 handleApiError(response.status, data.msg);
                 return;
             }
-            setMessageBox({ show: true, message: data.msg, type: 'success' });
+            showMessageBox(data.msg, 'success');
             // Update the local requests state
             setRequests(prevRequests => prevRequests.map(req =>
                 req.request_id === requestId ? { ...req, status: newStatus, updated_at: new Date().toISOString() } : req
@@ -562,7 +341,7 @@ function AdminDashboardPage() {
             fetchAdminStats(); // Refresh dashboard stats to update pending request count
         } catch (err) {
             console.error("Error updating request status:", err);
-            setMessageBox({ show: true, message: 'An error occurred while updating the request status.', type: 'error' });
+            showMessageBox('An error occurred while updating the request status.', 'error');
         }
     };
 
@@ -583,12 +362,77 @@ function AdminDashboardPage() {
                         handleApiError(response.status, data.msg);
                         return;
                     }
-                    setMessageBox({ show: true, message: data.msg, type: 'success' });
+                    showMessageBox(data.msg, 'success');
                     setRequests(prevRequests => prevRequests.filter(req => req.request_id !== requestId));
                     fetchAdminStats(); // Refresh stats after deletion
                 } catch (err) {
                     console.error("Error deleting request:", err);
-                    setMessageBox({ show: true, message: 'An error occurred while deleting the request.', type: 'error' });
+                    showMessageBox('An error occurred while deleting the request.', 'error');
+                }
+            },
+            onCancel: () => setConfirmDialog({ show: false, message: '', onConfirm: null })
+        });
+    };
+
+    // Handlers for Report Management
+    const handleViewReport = (report) => {
+        setViewingReport(report);
+        setIsReportDetailsModalOpen(true);
+    };
+
+    const handleUpdateReportStatus = async (reportId, newStatus) => {
+        setError(null);
+        try {
+            const response = await fetch(`http://localhost:5000/api/reports/${reportId}/status`, {
+                method: 'PUT',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ status: newStatus }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                handleApiError(response.status, data.msg);
+                return;
+            }
+            showMessageBox(data.msg, 'success');
+            setReports(prevReports => prevReports.map(report =>
+                report.report_id === reportId ? { 
+                    ...report, 
+                    status: newStatus,
+                    resolved_at: newStatus !== 'Pending' ? new Date().toISOString() : null, 
+                    resolved_by_username: currentUser.username // Assume current admin resolved it
+                } : report
+            ));
+            fetchAdminStats(); // Update pending reports count
+        } catch (err) {
+            console.error("Error updating report status:", err);
+            showMessageBox('An error occurred while updating the report status.', 'error');
+        }
+    };
+
+    const handleBanUserFromReport = (userId, username) => {
+        setConfirmDialog({
+            show: true,
+            message: `Are you sure you want to ban ${username}? This will restrict their access to the platform.`,
+            onConfirm: async () => {
+                setConfirmDialog({ show: false, message: '', onConfirm: null });
+                setError(null);
+                try {
+                    const response = await fetch(`http://localhost:5000/api/admin/users/${userId}/ban`, {
+                        method: 'PUT',
+                        headers: getAuthHeaders(),
+                    });
+                    const data = await response.json();
+                    if (!response.ok) {
+                        handleApiError(response.status, data.msg);
+                        return;
+                    }
+                    showMessageBox(data.msg, 'success');
+                    fetchUsers(); // Refresh users list to reflect banned status immediately
+                    setIsReportDetailsModalOpen(false); // Close report modal after banning
+                    setViewingReport(null);
+                } catch (err) {
+                    console.error("Error banning user:", err);
+                    showMessageBox('An error occurred while banning the user.', 'error');
                 }
             },
             onCancel: () => setConfirmDialog({ show: false, message: '', onConfirm: null })
@@ -611,29 +455,36 @@ function AdminDashboardPage() {
         resource.owner_username.toLowerCase().includes(listingSearchQuery.toLowerCase())
     );
 
-    const filteredRequests = requests.filter(request => // NEW: Filter requests
+    const filteredRequests = requests.filter(request => 
         request.resource_name.toLowerCase().includes(requestSearchQuery.toLowerCase()) ||
         request.requester_username.toLowerCase().includes(requestSearchQuery.toLowerCase()) ||
         request.owner_username.toLowerCase().includes(requestSearchQuery.toLowerCase()) ||
         request.status.toLowerCase().includes(requestSearchQuery.toLowerCase())
     );
 
+    const filteredReports = reports.filter(report => 
+        report.report_type.toLowerCase().includes(reportSearchQuery.toLowerCase()) ||
+        report.description.toLowerCase().includes(reportSearchQuery.toLowerCase()) ||
+        report.reporter_username.toLowerCase().includes(reportSearchQuery.toLowerCase()) ||
+        report.reported_username.toLowerCase().includes(reportSearchQuery.toLowerCase()) ||
+        report.status.toLowerCase().includes(reportSearchQuery.toLowerCase())
+    );
+
 
     useEffect(() => {
-        // Only proceed if authentication state is loaded
         if (loadingAuth) {
             return;
         }
 
         if (!currentUser || !localStorage.getItem('token')) {
-            setMessageBox({ show: true, message: "You must be logged in to access the Admin Dashboard.", type: 'error' });
+            showMessageBox("You must be logged in to access the Admin Dashboard.", 'error');
             logout();
             navigate('/login');
             return;
         }
 
         if (currentUser.role !== 'admin') {
-            setMessageBox({ show: true, message: 'Access Denied: You do not have administrator privileges. Redirecting to home.', type: 'error' });
+            showMessageBox('Access Denied: You do not have administrator privileges. Redirecting to home.', 'error');
             setLoading(false); 
             setTimeout(() => navigate('/'), 3000);
             return;
@@ -646,11 +497,12 @@ function AdminDashboardPage() {
             fetchUsers();
         } else if (activeView === 'listings') {
             fetchResources();
-        } else if (activeView === 'requests') { // NEW: Fetch requests when Requests tab is active
+        } else if (activeView === 'requests') { 
             fetchRequests();
+        } else if (activeView === 'reports') { 
+            fetchReports();
         }
-        // No fetch for 'reports' yet
-    }, [currentUser, activeView, navigate, logout, fetchAdminStats, fetchUsers, fetchResources, fetchRequests, loadingAuth]); // Added fetchRequests to dependencies
+    }, [currentUser, activeView, navigate, logout, fetchAdminStats, fetchUsers, fetchResources, fetchRequests, fetchReports, loadingAuth, showMessageBox]);
 
 
     if (loadingAuth) {
@@ -674,7 +526,7 @@ function AdminDashboardPage() {
                 </h2>
 
                 {/* Top Navigation Buttons */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-10"> {/* Changed to 5 columns */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-10">
                     <button
                         onClick={() => setActiveView('dashboard')}
                         className={`py-3 px-6 rounded-md font-semibold text-lg transition-colors shadow-md ${activeView === 'dashboard' ? 'bg-pink-600 text-white' : 'bg-gray-800 text-white hover:bg-gray-700'}`}
@@ -693,7 +545,7 @@ function AdminDashboardPage() {
                     >
                         LISTING MANAGEMENT
                     </button>
-                    <button // NEW: Requests Tab Button
+                    <button
                         onClick={() => setActiveView('requests')}
                         className={`py-3 px-6 rounded-md font-semibold text-lg transition-colors shadow-md ${activeView === 'requests' ? 'bg-pink-600 text-white' : 'bg-gray-800 text-white hover:bg-gray-700'}`}
                     >
@@ -919,7 +771,7 @@ function AdminDashboardPage() {
                     </div>
                 )}
 
-                {activeView === 'requests' && ( // NEW: Requests Management Section
+                {activeView === 'requests' && ( 
                     <div>
                         <h3 className="text-2xl font-semibold text-white mb-6 text-center">All Requests</h3>
                         <div className="mb-4">
@@ -1017,10 +869,90 @@ function AdminDashboardPage() {
                     </div>
                 )}
 
-                {activeView === 'reports' && (
-                    <div className="text-white text-center py-10">
-                        <h3 className="text-2xl font-semibold mb-4">Reports Section (Under Construction)</h3>
-                        <p>Details about reported issues or feedback will appear here.</p>
+                {activeView === 'reports' && ( 
+                    <div>
+                        <h3 className="text-2xl font-semibold text-white mb-6 text-center">All User Reports</h3>
+                        {/* Search Input for Reports */}
+                        <div className="mb-4">
+                            <input
+                                type="text"
+                                placeholder="Search reports by type, description, reporter, reported user, or status..."
+                                value={reportSearchQuery}
+                                onChange={(e) => setReportSearchQuery(e.target.value)}
+                                className="w-full px-4 py-2 rounded-md bg-gray-800 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                            />
+                        </div>
+                        {loading ? ( 
+                            <div className="text-white text-center py-10">
+                                <p className="text-xl">Loading reports...</p>
+                            </div>
+                        ) : (
+                            filteredReports.length > 0 ? (
+                                <div className="overflow-x-auto bg-white rounded-lg shadow-md p-4">
+                                    <table className="min-w-full divide-y divide-gray-200">
+                                        <thead className="bg-gray-50">
+                                            <tr>
+                                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                    Report Type
+                                                </th>
+                                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                    Reported By
+                                                </th>
+                                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                    Reported User
+                                                </th>
+                                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                    Resource
+                                                </th>
+                                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                    Status
+                                                </th>
+                                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                    Reported At
+                                                </th>
+                                                <th scope="col" className="relative px-6 py-3">
+                                                    <span className="sr-only">Actions</span>
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-gray-200">
+                                            {filteredReports.map((report) => (
+                                                <tr key={report.report_id}>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                        {report.report_type}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                        {report.reporter_username}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                        {report.reported_username}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                        {report.resource_name}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">
+                                                        {report.status}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                        {new Date(report.reported_at).toLocaleDateString()}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                        <button
+                                                            onClick={() => handleViewReport(report)}
+                                                            className="text-pink-600 hover:text-pink-900 mr-4"
+                                                        >
+                                                            View Details
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <p className="text-white text-center">No reports found matching your search criteria.</p>
+                            )
+                        )}
                     </div>
                 )}
             </div>
@@ -1043,12 +975,23 @@ function AdminDashboardPage() {
                 />
             )}
 
-            {/* NEW: Request Status Edit Modal */}
+            {/* Request Status Edit Modal */}
             {isRequestStatusModalOpen && editingRequest && (
                 <EditRequestStatusModal
                     request={editingRequest}
                     onClose={() => setIsRequestStatusModalOpen(false)}
                     onSave={handleUpdateRequestStatus}
+                />
+            )}
+
+            {/* Report Details Modal */}
+            {isReportDetailsModalOpen && viewingReport && (
+                <ReportDetailsModal
+                    report={viewingReport}
+                    onClose={() => setIsReportDetailsModalOpen(false)}
+                    onUpdateReportStatus={handleUpdateReportStatus}
+                    onBanUser={handleBanUserFromReport}
+                    onShowMessage={showMessageBox}
                 />
             )}
 
