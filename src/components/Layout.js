@@ -7,17 +7,13 @@ function Layout({ children }) {
     const { currentUser, logout, unreadNotificationsCount, refreshUnreadNotificationsCount } = useAuth();
     const location = useLocation();
 
-    // Use a useEffect to refresh notifications if currentUser changes (e.g., login/logout)
+    // Effect for periodic refresh of the notification badge in the navbar
     useEffect(() => {
-        // This effect will trigger the fetch in AuthContext whenever currentUser changes.
-        if (currentUser) {
-            refreshUnreadNotificationsCount(currentUser); // Pass currentUser if refresh func needs it for auth
-        }
-        
-        // Interval for periodic refresh of the notification badge in the navbar
+        // The initial fetch for current user is now handled in AuthContext itself via its useEffect.
+        // This useEffect now primarily handles the periodic refresh.
         const intervalId = setInterval(() => {
             if (currentUser) { // Only refresh if user is logged in
-                refreshUnreadNotificationsCount(currentUser);
+                refreshUnreadNotificationsCount(); // Call without arguments
             }
         }, 30000); // Refresh every 30 seconds
 
@@ -85,7 +81,6 @@ function Layout({ children }) {
                                         Admin
                                     </Link>
                                 )}
-                                {/* REMOVED LOGOUT BUTTON HERE, IT REMAINS ON PROFILE PAGE */}
                             </>
                         ) : (
                             <>
@@ -108,7 +103,7 @@ function Layout({ children }) {
             </header>
 
             {/* Main Content - Added padding-top to prevent content from going under the fixed header */}
-            <main className="flex-grow pt-16"> {/* Adjust pt-16 if your header height changes */}
+            <main className="flex-grow pt-16"> 
                 {children}
             </main>
 
