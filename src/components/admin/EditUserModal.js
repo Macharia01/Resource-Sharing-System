@@ -11,12 +11,23 @@ function EditUserModal({ user, onClose, onSave }) {
         username: user.username || '',
         address: user.address || '',
         role: user.role || 'member',
+        // CRITICAL FIX: Ensure is_banned is always sent as a boolean
+        isBanned: typeof user.is_banned === 'boolean' ? user.is_banned : false, 
     });
 
     const handleChange = (e) => {
         const { name, value } = e.target;
+        // For checkboxes or specific boolean inputs, you might handle differently.
+        // For text inputs like these, direct value is fine.
         setFormData(prev => ({ ...prev, [name]: value }));
     };
+
+    // Special handler for isBanned checkbox (if you add one later)
+    // For now, we are just passing the existing boolean status.
+    // If you want to make it editable, you'd add a checkbox and this logic:
+    // const handleBannedChange = (e) => {
+    //     setFormData(prev => ({ ...prev, isBanned: e.target.checked }));
+    // };
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -74,6 +85,23 @@ function EditUserModal({ user, onClose, onSave }) {
                             <option value="admin">Admin</option>
                         </select>
                     </div>
+                    {/* Add a hidden input or checkbox for isBanned if you want to explicitly control it in the UI */}
+                    {/* For now, it will just pass the initial state derived from user.is_banned */}
+                    {/* You could add a visible checkbox like this: */}
+                    {/* <div className="flex items-center">
+                        <input 
+                            type="checkbox" 
+                            id="editUserIsBanned" 
+                            name="isBanned" 
+                            checked={formData.isBanned} 
+                            onChange={handleBannedChange} 
+                            className="h-4 w-4 text-pink-600 focus:ring-pink-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="editUserIsBanned" className="ml-2 block text-sm text-gray-900">
+                            Is Banned
+                        </label>
+                    </div>
+                    */}
                     <div className="flex justify-end space-x-4 mt-6">
                         <button type="button" onClick={onClose} className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100">Cancel</button>
                         <button type="submit" className="px-6 py-2 bg-pink-600 text-white rounded-md hover:bg-pink-700">Save Changes</button>
